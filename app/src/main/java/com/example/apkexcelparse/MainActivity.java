@@ -395,6 +395,8 @@ public class MainActivity extends AppCompatActivity {
             buckets[i] = markToBucket(mark);
         }
         dotProgressView.setValues(buckets);
+        // Highlight the current criterion's dot on criterion pages; none on the overview.
+        dotProgressView.setHighlightIndex(isOverviewPage() ? -1 : (pageIdx - 1) - first);
     }
 
     /**

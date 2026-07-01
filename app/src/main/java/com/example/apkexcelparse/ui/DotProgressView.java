@@ -13,6 +13,7 @@ import android.view.View;
 public class DotProgressView extends View {
 
     private int[] values;
+    private int highlightIndex = -1; // index of the dot to highlight, or -1 for none
 
     private final Paint fillPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint strokePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -58,6 +59,12 @@ public class DotProgressView extends View {
         invalidate();
     }
 
+    /** Highlight the dot at this index with a black ring behind it; -1 clears the highlight. */
+    public void setHighlightIndex(int index) {
+        this.highlightIndex = index;
+        invalidate();
+    }
+
     private float dpToPx(float dp) {
         return dp * getResources().getDisplayMetrics().density;
     }
@@ -70,11 +77,17 @@ public class DotProgressView extends View {
         int h = getHeight();
         if (w == 0 || h == 0) return;
         float slot = (float) w / n;
-        float radius = Math.min(slot * 0.42f, h * 0.42f);
+        float radius = Math.min(slot * 0.42f, h * 0.34f);
         if (radius < 1f) radius = 1f;
+        // Highlight ring: larger black circle drawn behind the current dot.
+        float highlightRadius = Math.min(Math.min(slot * 0.5f, h * 0.5f), radius * 1.7f);
         float cy = h / 2f;
         for (int i = 0; i < n; i++) {
             float cx = slot * (i + 0.5f);
+            if (i == highlightIndex) {
+                fillPaint.setColor(0xFF000000);
+                canvas.drawCircle(cx, cy, highlightRadius, fillPaint);
+            }
             int v = values[i];
             if (v < 0 || v >= BUCKET_COLORS.length) {
                 fillPaint.setColor(0xFFFFFFFF);
