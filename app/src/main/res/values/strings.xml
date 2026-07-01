@@ -1,0 +1,7 @@
+<resources>
+    <string name="app_name">APK Excel Parse</string>
+    <string name="settings_title">Settings</string>
+    <string name="current_version">Current version: 1.0.0</string>
+    <string name="check_updates">Check for updates</string>
+    <string name="update_help">This checks the latest GitHub release and opens the release page.</string>
+</resources>
