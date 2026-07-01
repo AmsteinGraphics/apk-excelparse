@@ -14,12 +14,15 @@ import android.os.Handler;
 import android.os.Looper;
 import android.provider.MediaStore;
 import android.provider.OpenableColumns;
+import android.provider.Settings;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
 import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
+
+import androidx.core.content.FileProvider;
 
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
@@ -37,7 +40,11 @@ import com.google.android.material.slider.Slider;
 import org.apache.poi.ss.usermodel.Cell;
 import org.apache.poi.ss.usermodel.FormulaEvaluator;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import org.json.JSONArray;
 import org.json.JSONObject;
+
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import java.io.BufferedReader;
 import java.io.File;
@@ -60,7 +67,7 @@ public class MainActivity extends AppCompatActivity {
     private static final String WORKING_COPY_NAME = "working_copy.xlsx";
     private static final String XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
     private static final String RELEASES_API = "https://api.github.com/repos/AmsteinGraphics/apk-excelparse/releases/latest";
-    private static final String RELEASES_FALLBACK = "https://github.com/AmsteinGraphics/apk-excelparse/releases";
+    private static final Pattern SHA_PATTERN = Pattern.compile("[0-9a-f]{40}");
 
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
@@ -535,12 +542,14 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void checkForUpdates() {
+        Toast.makeText(this, "Checking for updates…", Toast.LENGTH_SHORT).show();
         executor.execute(() -> {
             try {
                 URL url = new URL(RELEASES_API);
                 HttpURLConnection connection = (HttpURLConnection) url.openConnection();
                 connection.setRequestMethod("GET");
                 connection.setRequestProperty("Accept", "application/vnd.github+json");
+                connection.setRequestProperty("User-Agent", "apk-excelparse-app");
                 int code = connection.getResponseCode();
                 if (code != HttpURLConnection.HTTP_OK) throw new RuntimeException("HTTP " + code);
                 StringBuilder builder = new StringBuilder();
@@ -549,16 +558,111 @@ public class MainActivity extends AppCompatActivity {
                     while ((line = reader.readLine()) != null) builder.append(line);
                 }
                 JSONObject release = new JSONObject(builder.toString());
-                String htmlUrl = release.optString("html_url", RELEASES_FALLBACK);
-                String tagName = release.optString("tag_name", "unknown");
+                Matcher m = SHA_PATTERN.matcher(release.optString("body", ""));
+                String latestSha = m.find() ? m.group() : null;
+                JSONArray assets = release.optJSONArray("assets");
+                String apkUrl = null;
+                if (assets != null) {
+                    for (int i = 0; i < assets.length(); i++) {
+                        JSONObject asset = assets.getJSONObject(i);
+                        if (asset.optString("name", "").endsWith(".apk")) {
+                            apkUrl = asset.optString("browser_download_url", null);
+                            break;
+                        }
+                    }
+                }
+                if (latestSha == null || apkUrl == null) {
+                    throw new RuntimeException("Release has no APK or SHA");
+                }
+                final String current = BuildConfig.BUILD_SHA;
+                final String latest = latestSha;
+                final String downloadUrl = apkUrl;
                 mainHandler.post(() -> {
-                    startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(htmlUrl)));
-                    Toast.makeText(this, "Latest release: " + tagName, Toast.LENGTH_SHORT).show();
+                    if (latest.equals(current)) {
+                        Toast.makeText(this,
+                                "Already up to date (" + shortSha(current) + ")",
+                                Toast.LENGTH_SHORT).show();
+                        return;
+                    }
+                    promptUpdate(current, latest, downloadUrl);
                 });
             } catch (Exception e) {
-                mainHandler.post(() -> Toast.makeText(this,
-                        "Update check failed: " + e.getMessage(), Toast.LENGTH_LONG).show());
+                mainHandler.post(() -> showErrorDialog("Update check failed", e.getMessage()));
             }
         });
+    }
+
+    private void promptUpdate(String current, String latest, String apkUrl) {
+        new androidx.appcompat.app.AlertDialog.Builder(this)
+                .setTitle("Update available")
+                .setMessage("Current: " + shortSha(current)
+                        + "\nLatest:  " + shortSha(latest)
+                        + "\n\nDownload and install now?"
+                        + (dirty ? "\n\nWarning: unsaved marks will be preserved but should be saved first." : ""))
+                .setPositiveButton("Update", (d, w) -> downloadAndInstall(apkUrl))
+                .setNegativeButton(android.R.string.cancel, null)
+                .show();
+    }
+
+    private void downloadAndInstall(String apkUrl) {
+        setLoading(true);
+        Toast.makeText(this, "Downloading update…", Toast.LENGTH_SHORT).show();
+        executor.execute(() -> {
+            try {
+                File apkFile = new File(getCacheDir(), "update.apk");
+                downloadTo(apkUrl, apkFile);
+                mainHandler.post(() -> {
+                    setLoading(false);
+                    requestInstall(apkFile);
+                });
+            } catch (Exception e) {
+                mainHandler.post(() -> {
+                    setLoading(false);
+                    showErrorDialog("Download failed", e.getMessage());
+                });
+            }
+        });
+    }
+
+    private void downloadTo(String urlStr, File dest) throws Exception {
+        URL url = new URL(urlStr);
+        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+        conn.setInstanceFollowRedirects(true);
+        conn.setRequestProperty("User-Agent", "apk-excelparse-app");
+        int code = conn.getResponseCode();
+        if (code < 200 || code >= 300) throw new RuntimeException("HTTP " + code);
+        try (InputStream in = conn.getInputStream();
+             OutputStream out = new FileOutputStream(dest)) {
+            byte[] buf = new byte[64 * 1024];
+            int n;
+            while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
+        }
+    }
+
+    private void requestInstall(File apkFile) {
+        if (!getPackageManager().canRequestPackageInstalls()) {
+            new androidx.appcompat.app.AlertDialog.Builder(this)
+                    .setTitle("Permission needed")
+                    .setMessage("Grant this app permission to install updates, then tap Update again.")
+                    .setPositiveButton("Open settings", (d, w) -> {
+                        Intent i = new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                                Uri.parse("package:" + getPackageName()));
+                        startActivity(i);
+                    })
+                    .setNegativeButton(android.R.string.cancel, null)
+                    .show();
+            return;
+        }
+        Uri apkUri = FileProvider.getUriForFile(this,
+                getPackageName() + ".fileprovider", apkFile);
+        Intent intent = new Intent(Intent.ACTION_VIEW);
+        intent.setDataAndType(apkUri, "application/vnd.android.package-archive");
+        intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        startActivity(intent);
+    }
+
+    private static String shortSha(String sha) {
+        if (sha == null || sha.isEmpty()) return "unknown";
+        return sha.length() >= 7 ? sha.substring(0, 7) : sha;
     }
 }
