@@ -32,6 +32,7 @@ import androidx.appcompat.app.AppCompatActivity;
 
 import com.example.apkexcelparse.model.Criterion;
 import com.example.apkexcelparse.model.GradingModel;
+import com.example.apkexcelparse.model.Group;
 import com.example.apkexcelparse.model.Student;
 import com.example.apkexcelparse.ui.DotProgressView;
 import com.example.apkexcelparse.xlsx.XlsxParser;
@@ -97,7 +98,9 @@ public class MainActivity extends AppCompatActivity {
     private FormulaEvaluator formulaEvaluator;
     private GradingModel model;
     private int studentIdx;
-    private int criterionIdx;
+    // Per-student page index: 0 = overview (general average + all dots, no grading),
+    // 1..criteria.size() = criterion pages (criterion index = pageIdx - 1).
+    private int pageIdx;
     private boolean dirty;
     private boolean settingSliderProgrammatically;
 
@@ -252,7 +255,7 @@ public class MainActivity extends AppCompatActivity {
                     formulaEvaluator = wb.getCreationHelper().createFormulaEvaluator();
                     model = m;
                     studentIdx = 0;
-                    criterionIdx = 0;
+                    pageIdx = 0;
                     dirty = false;
                     setLoading(false);
                     showGrading();
@@ -277,14 +280,20 @@ public class MainActivity extends AppCompatActivity {
                 .show();
     }
 
+    // Pages per student: one overview page (index 0) plus one page per criterion.
+    private int pagesPerStudent() {
+        return model.criteria.size() + 1;
+    }
+
     private void navigate(int delta) {
         if (model == null) return;
-        int total = model.students.size() * model.criteria.size();
-        int flat = studentIdx * model.criteria.size() + criterionIdx + delta;
+        int perStudent = pagesPerStudent();
+        int total = model.students.size() * perStudent;
+        int flat = studentIdx * perStudent + pageIdx + delta;
         if (flat < 0) flat = 0;
         if (flat >= total) flat = total - 1;
-        studentIdx = flat / model.criteria.size();
-        criterionIdx = flat % model.criteria.size();
+        studentIdx = flat / perStudent;
+        pageIdx = flat % perStudent;
         render();
     }
 
@@ -294,18 +303,51 @@ public class MainActivity extends AppCompatActivity {
         if (newIdx < 0) newIdx = 0;
         if (newIdx >= model.students.size()) newIdx = model.students.size() - 1;
         if (newIdx == studentIdx) return;
-        studentIdx = newIdx;
+        studentIdx = newIdx; // keep the same page (overview stays overview) across students
         render();
+    }
+
+    private boolean isOverviewPage() {
+        return pageIdx == 0;
     }
 
     private void render() {
         if (model == null) return;
         Student s = model.students.get(studentIdx);
-        Criterion c = model.criteria.get(criterionIdx);
 
         studentCounter.setText(String.format(Locale.getDefault(),
                 "étudiant %d / %d", studentIdx + 1, model.students.size()));
         studentName.setText(s.name);
+
+        if (isOverviewPage()) {
+            renderOverview();
+        } else {
+            renderCriterion(model.criteria.get(pageIdx - 1), s);
+        }
+
+        refreshDots();
+        refreshAverage();
+    }
+
+    /** Overview page: general average + all dots, no criterion detail and no grading control. */
+    private void renderOverview() {
+        criterionGroup.setText("vue générale");
+        criterionGroup.setVisibility(View.VISIBLE);
+        criterionIdCoef.setVisibility(View.GONE);
+        criterionContract.setText("moyenne générale et progression de l'étudiant");
+        criterionContract.setVisibility(View.VISIBLE);
+        criterionRemarks.setVisibility(View.GONE);
+        markLabel.setVisibility(View.GONE);
+        markSlider.setVisibility(View.GONE);
+    }
+
+    private void renderCriterion(Criterion c, Student s) {
+        criterionGroup.setVisibility(View.VISIBLE);
+        criterionIdCoef.setVisibility(View.VISIBLE);
+        criterionContract.setVisibility(View.VISIBLE);
+        criterionRemarks.setVisibility(View.VISIBLE);
+        markLabel.setVisibility(View.VISIBLE);
+        markSlider.setVisibility(View.VISIBLE);
 
         criterionGroup.setText(c.groupName != null ? c.groupName : "");
         String coefText = c.coefficient != null
@@ -323,27 +365,51 @@ public class MainActivity extends AppCompatActivity {
         markSlider.setValue(Math.round(value * 4f) / 4f);
         settingSliderProgrammatically = false;
         markLabel.setText(existing != null ? formatMark(value) : "—");
-
-        refreshDotsForStudent();
-        refreshStudentAverage();
     }
 
-    private void refreshDotsForStudent() {
+    /**
+     * Refresh the dot row for the current page: all criteria on the overview page,
+     * only the current criterion's group on a criterion page.
+     */
+    private void refreshDots() {
         if (model == null || workbook == null || dotProgressView == null) return;
         Student s = model.students.get(studentIdx);
-        int n = model.criteria.size();
+        int first;
+        int last; // inclusive criterion indices to display
+        if (isOverviewPage() || model.criteria.isEmpty()) {
+            first = 0;
+            last = model.criteria.size() - 1;
+        } else {
+            Group g = model.groupForCriterion(pageIdx - 1);
+            if (g != null) {
+                first = g.firstCriterionIndex;
+                last = g.lastCriterionIndex;
+            } else {
+                first = last = pageIdx - 1;
+            }
+        }
+        int n = last - first + 1;
         int[] buckets = new int[n];
         for (int i = 0; i < n; i++) {
-            Double mark = XlsxParser.readMark(workbook, s, model.criteria.get(i));
+            Double mark = XlsxParser.readMark(workbook, s, model.criteria.get(first + i));
             buckets[i] = markToBucket(mark);
         }
         dotProgressView.setValues(buckets);
     }
 
-    private void refreshStudentAverage() {
+    /**
+     * Refresh the average shown top-right: the overall student average (column CL) on the
+     * overview page, or the current group's "sur 6" grade on a criterion page. Both are /6.
+     */
+    private void refreshAverage() {
         if (model == null || workbook == null || studentAverage == null) return;
         Student s = model.students.get(studentIdx);
-        Double avg = XlsxParser.readNumericAt(workbook, s, XlsxParser.COL_STUDENT_AVERAGE, formulaEvaluator);
+        int col = XlsxParser.COL_STUDENT_AVERAGE;
+        if (!isOverviewPage()) {
+            Group g = model.groupForCriterion(pageIdx - 1);
+            if (g != null) col = g.averageColumnIndex;
+        }
+        Double avg = XlsxParser.readNumericAt(workbook, s, col, formulaEvaluator);
         if (avg == null || avg.isNaN()) {
             studentAverage.setText("");
         } else {
@@ -360,9 +426,9 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void applyMarkToWorkbook(float value) {
-        if (model == null || workbook == null) return;
+        if (model == null || workbook == null || isOverviewPage()) return;
         Student s = model.students.get(studentIdx);
-        Criterion c = model.criteria.get(criterionIdx);
+        Criterion c = model.criteria.get(pageIdx - 1);
         boolean written = XlsxParser.writeMark(workbook, s, c, value);
         if (written) {
             dirty = true;
@@ -371,8 +437,8 @@ public class MainActivity extends AppCompatActivity {
                 Cell cell = XlsxParser.getEvalCell(workbook, s, c.columnIndex);
                 if (cell != null) formulaEvaluator.notifyUpdateCell(cell);
             }
-            dotProgressView.setValueAt(criterionIdx, markToBucket((double) value));
-            refreshStudentAverage();
+            refreshDots();
+            refreshAverage();
         } else {
             Toast.makeText(this, "Cell not writable (not a mark cell)", Toast.LENGTH_SHORT).show();
         }

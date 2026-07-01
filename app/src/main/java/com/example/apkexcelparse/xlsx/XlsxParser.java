@@ -2,6 +2,7 @@ package com.example.apkexcelparse.xlsx;
 
 import com.example.apkexcelparse.model.Criterion;
 import com.example.apkexcelparse.model.GradingModel;
+import com.example.apkexcelparse.model.Group;
 import com.example.apkexcelparse.model.Student;
 
 import org.apache.poi.ss.usermodel.Cell;
@@ -22,6 +23,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 
 public class XlsxParser {
 
@@ -112,7 +114,30 @@ public class XlsxParser {
             students.add(new Student(row.getRowNum(), number, name));
         }
 
-        return new GradingModel(students, criteria);
+        return new GradingModel(students, criteria, buildGroups(criteria));
+    }
+
+    /**
+     * Collapse the ordered criteria list into groups: each maximal run of consecutive
+     * criteria sharing the same group name is one group. The group's grade column is the
+     * "sur 6" formula column immediately to the right of the group's last criterion column.
+     */
+    private static List<Group> buildGroups(List<Criterion> criteria) {
+        List<Group> groups = new ArrayList<>();
+        int i = 0;
+        while (i < criteria.size()) {
+            String name = criteria.get(i).groupName;
+            int last = i;
+            int maxCol = criteria.get(i).columnIndex;
+            while (last + 1 < criteria.size()
+                    && Objects.equals(criteria.get(last + 1).groupName, name)) {
+                last++;
+                maxCol = Math.max(maxCol, criteria.get(last).columnIndex);
+            }
+            groups.add(new Group(name, i, last, maxCol + 1));
+            i = last + 1;
+        }
+        return groups;
     }
 
     /**
