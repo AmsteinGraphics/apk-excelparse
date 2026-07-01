@@ -40,7 +40,7 @@ import com.example.apkexcelparse.model.Student;
 import com.example.apkexcelparse.ui.DotProgressView;
 import com.example.apkexcelparse.xlsx.XlsxParser;
 import com.google.android.material.button.MaterialButton;
-import com.google.android.material.slider.Slider;
+import android.content.res.ColorStateList;
 
 import org.apache.poi.ss.usermodel.Cell;
 import org.apache.poi.ss.usermodel.FormulaEvaluator;
@@ -86,8 +86,8 @@ public class MainActivity extends AppCompatActivity {
     private TextView criterionIdCoef;
     private TextView criterionContract;
     private TextView criterionRemarks;
-    private TextView markLabel;
-    private Slider markSlider;
+    private View markButtonsContainer;
+    private final MaterialButton[] markButtons = new MaterialButton[5];
     private MaterialButton prevButton;
     private MaterialButton nextButton;
     private MaterialButton prevStudentButton;
@@ -114,7 +114,13 @@ public class MainActivity extends AppCompatActivity {
     // return to here (>= 1). -1 = no pending return, so the button shows "OVERVIEW".
     private int overviewReturnPage = -1;
     private boolean dirty;
-    private boolean settingSliderProgrammatically;
+
+    // Mark values for the 5 buttons, indexed to match dot buckets (0.00 … 1.00).
+    private static final float[] MARK_VALUES = {0f, 0.25f, 0.5f, 0.75f, 1f};
+    // Dot/button colours per bucket: 0.0 black, 0.25 red, 0.5 orange, 0.75 yellow, 1.0 green.
+    private static final int[] BUCKET_COLORS = {
+            0xFF000000, 0xFFEF5350, 0xFFFB8C00, 0xFFFDD835, 0xFF66BB6A,
+    };
 
     private final ActivityResultLauncher<String[]> pickFileLauncher =
             registerForActivityResult(new ActivityResultContracts.OpenDocument(), this::onFilePicked);
@@ -133,8 +139,12 @@ public class MainActivity extends AppCompatActivity {
         criterionIdCoef = findViewById(R.id.criterionIdCoef);
         criterionContract = findViewById(R.id.criterionContract);
         criterionRemarks = findViewById(R.id.criterionRemarks);
-        markLabel = findViewById(R.id.markLabel);
-        markSlider = findViewById(R.id.markSlider);
+        markButtonsContainer = findViewById(R.id.markButtonsContainer);
+        markButtons[0] = findViewById(R.id.btnMark0);
+        markButtons[1] = findViewById(R.id.btnMark1);
+        markButtons[2] = findViewById(R.id.btnMark2);
+        markButtons[3] = findViewById(R.id.btnMark3);
+        markButtons[4] = findViewById(R.id.btnMark4);
         prevButton = findViewById(R.id.prevButton);
         nextButton = findViewById(R.id.nextButton);
         prevStudentButton = findViewById(R.id.prevStudentButton);
@@ -170,11 +180,10 @@ public class MainActivity extends AppCompatActivity {
             saveAsync(null);
         });
 
-        markSlider.addOnChangeListener((slider, value, fromUser) -> {
-            if (settingSliderProgrammatically) return;
-            markLabel.setText(formatMark(value));
-            applyMarkToWorkbook(value);
-        });
+        for (int i = 0; i < markButtons.length; i++) {
+            final int idx = i;
+            markButtons[i].setOnClickListener(v -> onMarkButtonClicked(idx));
+        }
 
         SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
         if (prefs.getBoolean(KEY_HAS_WORKBOOK, false) && workingCopyFile().exists()) {
@@ -456,8 +465,7 @@ public class MainActivity extends AppCompatActivity {
         criterionContract.setText("moyenne générale et progression de l'étudiant");
         criterionContract.setVisibility(View.VISIBLE);
         criterionRemarks.setVisibility(View.GONE);
-        markLabel.setVisibility(View.GONE);
-        markSlider.setVisibility(View.GONE);
+        markButtonsContainer.setVisibility(View.GONE);
         buildOverviewTable(s);
         overviewTable.setVisibility(View.VISIBLE);
     }
@@ -569,8 +577,7 @@ public class MainActivity extends AppCompatActivity {
         criterionIdCoef.setVisibility(View.VISIBLE);
         criterionContract.setVisibility(View.VISIBLE);
         criterionRemarks.setVisibility(View.VISIBLE);
-        markLabel.setVisibility(View.VISIBLE);
-        markSlider.setVisibility(View.VISIBLE);
+        markButtonsContainer.setVisibility(View.VISIBLE);
 
         criterionGroup.setText(c.groupName != null ? c.groupName : "");
         String coefText = c.coefficient != null
@@ -581,13 +588,37 @@ public class MainActivity extends AppCompatActivity {
         criterionRemarks.setText(c.remarks != null ? c.remarks : "");
 
         Double existing = XlsxParser.readMark(workbook, s, c);
-        float value = existing != null ? existing.floatValue() : 0f;
-        if (value < 0f) value = 0f;
-        if (value > 1f) value = 1f;
-        settingSliderProgrammatically = true;
-        markSlider.setValue(Math.round(value * 4f) / 4f);
-        settingSliderProgrammatically = false;
-        markLabel.setText(existing != null ? formatMark(value) : "—");
+        // No stored mark → nothing selected (all buttons shaded).
+        refreshMarkButtons(existing != null ? markToBucket(existing) : -1);
+    }
+
+    /** A mark button was tapped: write its value and reflect the new selection. */
+    private void onMarkButtonClicked(int index) {
+        if (isOverviewPage()) return;
+        applyMarkToWorkbook(MARK_VALUES[index]);
+        refreshMarkButtons(index);
+    }
+
+    /**
+     * Colour the mark buttons like their dots: the selected one at full tint, the rest at a 25%
+     * shade. Labels are black except the selected 0.00 button, whose label goes white for contrast.
+     */
+    private void refreshMarkButtons(int selectedIndex) {
+        for (int i = 0; i < markButtons.length; i++) {
+            boolean selected = i == selectedIndex;
+            int bg = selected ? BUCKET_COLORS[i] : shade25(BUCKET_COLORS[i]);
+            markButtons[i].setBackgroundTintList(ColorStateList.valueOf(bg));
+            int textColor = (selected && i == 0) ? 0xFFFFFFFF : 0xFF000000;
+            markButtons[i].setTextColor(textColor);
+        }
+    }
+
+    /** 25% of the colour blended over white — a pale version of the same hue. */
+    private static int shade25(int color) {
+        int r = (int) (((color >> 16) & 0xFF) * 0.25f + 255 * 0.75f);
+        int g = (int) (((color >> 8) & 0xFF) * 0.25f + 255 * 0.75f);
+        int b = (int) ((color & 0xFF) * 0.25f + 255 * 0.75f);
+        return 0xFF000000 | (r << 16) | (g << 8) | b;
     }
 
     /**
@@ -818,10 +849,6 @@ public class MainActivity extends AppCompatActivity {
             }
             workbook = null;
         }
-    }
-
-    private static String formatMark(float value) {
-        return String.format(Locale.getDefault(), "%.2f", value);
     }
 
     private static String formatCoef(Double coef) {

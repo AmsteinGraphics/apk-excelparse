@@ -4,7 +4,7 @@ This file exists so a Claude Code session on any machine can pick up the project
 
 ## What the app does
 
-Personal Android grading app for a Swiss teacher. Reads student rows and per-criterion columns from an `.xlsx` file, presents one criterion at a time on a phone-sized screen with a slider that writes marks (0.0 / 0.25 / 0.5 / 0.75 / 1.0) back into the workbook. The original picked file is never modified — a working copy lives in app-private storage, and each Save mirrors it to `Downloads/{basename}-graded.xlsx` via MediaStore.
+Personal Android grading app for a Swiss teacher. Reads student rows and per-criterion columns from an `.xlsx` file, presents one criterion at a time on a phone-sized screen with five mark buttons (0.00 / 0.25 / 0.50 / 0.75 / 1.00) that write the mark back into the workbook. The original picked file is never modified — a working copy lives in app-private storage, and each Save mirrors it to `Downloads/{basename}-graded.xlsx` via MediaStore.
 
 ## Non-obvious architecture
 
@@ -78,7 +78,8 @@ The FileProvider authority is `${applicationId}.fileprovider` with paths declare
 
 - Theme is `Theme.MaterialComponents.Light.NoActionBar`. There is no ActionBar, so `onCreateOptionsMenu` items are invisible. Use the ⋮ `MaterialButton` + `PopupMenu` pattern instead (already wired in `MainActivity.showOverflowMenu`).
 - All user-facing terms use lowercase French: "étudiant N / M", "critère 12 · coefficient 2.0", nav buttons "« étudiant  ‹ critère  critère ›  étudiant »". Keep this style; do not capitalize.
-- Slider stays at the bottom, criterion description scrolls above. Layout is intentionally structured as `LinearLayout` with the middle `ScrollView` weighted so the mark controls never shift.
+- **Mark input is five colour-coded buttons** (`btnMark0..4`, values 0.00…1.00) in a `markButtonsContainer`, stacked just above the GENERAL button: row layout is 1.00 (full width) on top, then 0.50/0.75, then 0.00/0.25. Each button is tinted its dot-bucket colour (`BUCKET_COLORS`): the selected mark at full tint, the others at a 25%-over-white shade (`shade25`). Labels are black except the selected 0.00 button (white for contrast). `refreshMarkButtons(selectedIndex)` paints them; `-1` = no stored mark = nothing selected. Tapping writes via `applyMarkToWorkbook`. (Replaced the old `Slider`/`markLabel`.)
+- Mark buttons + nav buttons sit at the bottom, criterion description scrolls above. Layout is intentionally structured as `LinearLayout` with the middle `ScrollView` weighted so the mark controls never shift.
 - Progress row: `DotProgressView` under the student name, one dot per criterion. Unmarked = white circle with thin black stroke; marked = solid color (0.0 black, 0.25 red, 0.5 orange, 0.75 yellow, 1.0 green). Its function is progress visibility for the teacher — how much is still left to evaluate for this student.
 - **Dots scale by coefficient** (`coefScale`): coef 2 = 100%, ±25% per integer unit (`1 + (coef−2)·0.25`), clamped `[0.4, 2.0]`; radius capped at `h/2 − overshoot`. Bigger dot = heavier criterion. Dot row is **33dp** tall.
 - **Highlight ring = dot radius + a fixed `HIGHLIGHT_OVERSHOOT_DP` (3dp)**, not a multiple of the radius — so it reads as a constant-weight stroke behind dots of any coefficient scale (a scaled multiple vanished behind large dots). The dot-radius cap reserves that overshoot so the ring never spills out of the row.
