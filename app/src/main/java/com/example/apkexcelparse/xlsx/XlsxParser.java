@@ -148,12 +148,17 @@ public class XlsxParser {
 
     private static Map<String, CriterionMeta> readCriterionMeta(Sheet meta) {
         Map<String, CriterionMeta> byId = new HashMap<>();
+        String lastGroup = null; // fill-down: group name is written once per group, blank on subsequent rows
         for (Row row : meta) {
             if (row.getRowNum() == 0) continue; // header row
             String id = readCellString(row.getCell(META_COL_ID));
             if (id == null || id.isEmpty()) continue;
+            String rawGroup = readCellString(row.getCell(META_COL_GROUP));
+            if (rawGroup != null && !rawGroup.isEmpty()) {
+                lastGroup = rawGroup;
+            }
             CriterionMeta m = new CriterionMeta();
-            m.groupName = readCellString(row.getCell(META_COL_GROUP));
+            m.groupName = lastGroup;
             m.coefficient = readCellDouble(row.getCell(META_COL_COEF));
             m.contract = readCellString(row.getCell(META_COL_CONTRACT));
             m.remarks = readCellString(row.getCell(META_COL_REMARKS));

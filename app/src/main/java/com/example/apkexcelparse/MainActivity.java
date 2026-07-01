@@ -65,6 +65,8 @@ public class MainActivity extends AppCompatActivity {
     private Slider markSlider;
     private MaterialButton prevButton;
     private MaterialButton nextButton;
+    private MaterialButton prevStudentButton;
+    private MaterialButton nextStudentButton;
     private MaterialButton saveButton;
     private View dirtyIndicator;
 
@@ -96,12 +98,16 @@ public class MainActivity extends AppCompatActivity {
         markSlider = findViewById(R.id.markSlider);
         prevButton = findViewById(R.id.prevButton);
         nextButton = findViewById(R.id.nextButton);
+        prevStudentButton = findViewById(R.id.prevStudentButton);
+        nextStudentButton = findViewById(R.id.nextStudentButton);
         saveButton = findViewById(R.id.saveButton);
         dirtyIndicator = findViewById(R.id.dirtyIndicator);
 
         findViewById(R.id.pickButton).setOnClickListener(v -> launchPicker());
         prevButton.setOnClickListener(v -> navigate(-1));
         nextButton.setOnClickListener(v -> navigate(1));
+        prevStudentButton.setOnClickListener(v -> navigateStudent(-1));
+        nextStudentButton.setOnClickListener(v -> navigateStudent(1));
         saveButton.setOnClickListener(v -> {
             if (!dirty) {
                 Toast.makeText(this, "Nothing to save", Toast.LENGTH_SHORT).show();
@@ -250,19 +256,29 @@ public class MainActivity extends AppCompatActivity {
         render();
     }
 
+    private void navigateStudent(int delta) {
+        if (model == null) return;
+        int newIdx = studentIdx + delta;
+        if (newIdx < 0) newIdx = 0;
+        if (newIdx >= model.students.size()) newIdx = model.students.size() - 1;
+        if (newIdx == studentIdx) return;
+        studentIdx = newIdx;
+        render();
+    }
+
     private void render() {
         if (model == null) return;
         Student s = model.students.get(studentIdx);
         Criterion c = model.criteria.get(criterionIdx);
 
         studentCounter.setText(String.format(Locale.getDefault(),
-                "Student %d / %d", studentIdx + 1, model.students.size()));
+                "étudiant %d / %d", studentIdx + 1, model.students.size()));
         studentName.setText(s.name);
 
         criterionGroup.setText(c.groupName != null ? c.groupName : "");
         String coefText = c.coefficient != null
-                ? String.format(Locale.getDefault(), "Criterion %s  ·  coef %s", c.id, formatCoef(c.coefficient))
-                : String.format(Locale.getDefault(), "Criterion %s", c.id);
+                ? String.format(Locale.getDefault(), "critère %s  ·  coefficient %s", c.id, formatCoef(c.coefficient))
+                : String.format(Locale.getDefault(), "critère %s", c.id);
         criterionIdCoef.setText(coefText);
         criterionContract.setText(c.contract != null ? c.contract : "");
         criterionRemarks.setText(c.remarks != null ? c.remarks : "");

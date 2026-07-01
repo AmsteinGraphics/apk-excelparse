@@ -27,141 +27,197 @@
             android:text="@string/pick_file" />
     </LinearLayout>
 
-    <ScrollView
+    <LinearLayout
         android:id="@+id/gradingContainer"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
+        android:orientation="vertical"
         android:visibility="gone">
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:padding="24dp">
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:gravity="center_vertical">
-
-                <TextView
-                    android:id="@+id/studentCounter"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:textSize="14sp"
-                    android:textColor="#666" />
-
-                <TextView
-                    android:id="@+id/dirtyIndicator"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginEnd="8dp"
-                    android:text="•  unsaved"
-                    android:textSize="12sp"
-                    android:textStyle="bold"
-                    android:textColor="#E65100"
-                    android:visibility="gone" />
-
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/saveButton"
-                    style="@style/Widget.MaterialComponents.Button.OutlinedButton"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:minWidth="0dp"
-                    android:text="Save" />
-            </LinearLayout>
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingStart="24dp"
+            android:paddingEnd="24dp"
+            android:paddingTop="16dp">
 
             <TextView
-                android:id="@+id/studentName"
-                android:layout_width="wrap_content"
+                android:id="@+id/studentCounter"
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:textSize="22sp"
-                android:textStyle="bold"
-                android:layout_marginBottom="16dp" />
-
-            <View
-                android:layout_width="match_parent"
-                android:layout_height="1dp"
-                android:background="#DDD"
-                android:layout_marginBottom="16dp" />
-
-            <TextView
-                android:id="@+id/criterionGroup"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:textSize="14sp"
-                android:textColor="#1976D2"
-                android:textStyle="bold" />
-
-            <TextView
-                android:id="@+id/criterionIdCoef"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
+                android:layout_weight="1"
                 android:textSize="14sp"
                 android:textColor="#666" />
 
             <TextView
-                android:id="@+id/criterionContract"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:textSize="16sp"
-                android:layout_marginTop="8dp" />
-
-            <TextView
-                android:id="@+id/criterionRemarks"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:textSize="14sp"
-                android:textColor="#555"
-                android:layout_marginTop="8dp"
-                android:layout_marginBottom="24dp"
-                android:fontFamily="sans-serif-light" />
-
-            <TextView
-                android:id="@+id/markLabel"
+                android:id="@+id/dirtyIndicator"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_gravity="center_horizontal"
-                android:textSize="36sp"
+                android:layout_marginEnd="8dp"
+                android:text="•  unsaved"
+                android:textSize="12sp"
                 android:textStyle="bold"
-                android:text="—" />
+                android:textColor="#E65100"
+                android:visibility="gone" />
 
-            <com.google.android.material.slider.Slider
-                android:id="@+id/markSlider"
-                android:layout_width="match_parent"
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/saveButton"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:valueFrom="0.0"
-                android:valueTo="1.0"
-                android:stepSize="0.25"
-                android:value="0.0"
-                android:layout_marginBottom="24dp" />
+                android:minWidth="0dp"
+                android:text="Save" />
+        </LinearLayout>
+
+        <ScrollView
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:fillViewport="true">
 
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:weightSum="2">
+                android:orientation="vertical"
+                android:paddingStart="24dp"
+                android:paddingEnd="24dp"
+                android:paddingTop="8dp">
 
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/prevButton"
-                    android:layout_width="0dp"
+                <TextView
+                    android:id="@+id/studentName"
+                    android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:layout_marginEnd="8dp"
-                    android:text="@string/prev" />
+                    android:textSize="22sp"
+                    android:textStyle="bold"
+                    android:layout_marginBottom="16dp" />
 
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/nextButton"
-                    android:layout_width="0dp"
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="1dp"
+                    android:background="#DDD"
+                    android:layout_marginBottom="16dp" />
+
+                <TextView
+                    android:id="@+id/criterionGroup"
+                    android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:layout_marginStart="8dp"
-                    android:text="@string/next" />
+                    android:textSize="14sp"
+                    android:textColor="#1976D2"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/criterionIdCoef"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textSize="14sp"
+                    android:textColor="#666" />
+
+                <TextView
+                    android:id="@+id/criterionContract"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:textSize="16sp"
+                    android:layout_marginTop="8dp" />
+
+                <TextView
+                    android:id="@+id/criterionRemarks"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:textSize="14sp"
+                    android:textColor="#555"
+                    android:layout_marginTop="8dp"
+                    android:layout_marginBottom="16dp"
+                    android:fontFamily="sans-serif-light" />
             </LinearLayout>
+        </ScrollView>
+
+        <TextView
+            android:id="@+id/markLabel"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_horizontal"
+            android:textSize="36sp"
+            android:textStyle="bold"
+            android:text="—" />
+
+        <com.google.android.material.slider.Slider
+            android:id="@+id/markSlider"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:valueFrom="0.0"
+            android:valueTo="1.0"
+            android:stepSize="0.25"
+            android:value="0.0"
+            android:paddingStart="24dp"
+            android:paddingEnd="24dp"
+            android:layout_marginBottom="8dp" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:paddingStart="12dp"
+            android:paddingEnd="12dp"
+            android:paddingBottom="16dp"
+            android:weightSum="4">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/prevStudentButton"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="4dp"
+                android:layout_marginEnd="4dp"
+                android:minWidth="0dp"
+                android:insetLeft="0dp"
+                android:insetRight="0dp"
+                android:textSize="12sp"
+                android:text="@string/prev_student" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/prevButton"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="4dp"
+                android:layout_marginEnd="4dp"
+                android:minWidth="0dp"
+                android:insetLeft="0dp"
+                android:insetRight="0dp"
+                android:textSize="12sp"
+                android:text="@string/prev_criterion" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/nextButton"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="4dp"
+                android:layout_marginEnd="4dp"
+                android:minWidth="0dp"
+                android:insetLeft="0dp"
+                android:insetRight="0dp"
+                android:textSize="12sp"
+                android:text="@string/next_criterion" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/nextStudentButton"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="4dp"
+                android:layout_marginEnd="4dp"
+                android:minWidth="0dp"
+                android:insetLeft="0dp"
+                android:insetRight="0dp"
+                android:textSize="12sp"
+                android:text="@string/next_student" />
         </LinearLayout>
-    </ScrollView>
+    </LinearLayout>
 
     <ProgressBar
         android:id="@+id/loadingIndicator"

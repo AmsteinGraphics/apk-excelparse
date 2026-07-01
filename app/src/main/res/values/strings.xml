@@ -4,8 +4,10 @@
     <string name="change_file">Change file…</string>
     <string name="check_updates">Check for updates</string>
     <string name="no_file_loaded">No workbook loaded yet. Pick an xlsx file to start grading.</string>
-    <string name="prev">Previous</string>
-    <string name="next">Next</string>
+    <string name="prev_student">« étudiant</string>
+    <string name="prev_criterion">‹ critère</string>
+    <string name="next_criterion">critère ›</string>
+    <string name="next_student">étudiant »</string>
     <string name="loading">Loading…</string>
     <string name="saving">Saving…</string>
     <string name="save_and_share">Save &amp; share</string>
