@@ -1,11 +1,19 @@
 package com.example.apkexcelparse;
 
+import android.content.ContentResolver;
+import android.content.ContentUris;
+import android.content.ContentValues;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.database.Cursor;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
+import android.os.Environment;
 import android.os.Handler;
 import android.os.Looper;
+import android.provider.MediaStore;
+import android.provider.OpenableColumns;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
@@ -48,7 +56,9 @@ public class MainActivity extends AppCompatActivity {
 
     private static final String PREFS = "apk_excelparse";
     private static final String KEY_HAS_WORKBOOK = "has_workbook";
+    private static final String KEY_DISPLAY_NAME = "display_name";
     private static final String WORKING_COPY_NAME = "working_copy.xlsx";
+    private static final String XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
     private static final String RELEASES_API = "https://api.github.com/repos/AmsteinGraphics/apk-excelparse/releases/latest";
     private static final String RELEASES_FALLBACK = "https://github.com/AmsteinGraphics/apk-excelparse/releases";
 
@@ -121,10 +131,7 @@ public class MainActivity extends AppCompatActivity {
                 Toast.makeText(this, "Nothing to save", Toast.LENGTH_SHORT).show();
                 return;
             }
-            saveAsync(() -> {
-                updateDirtyUi();
-                Toast.makeText(this, "Saved", Toast.LENGTH_SHORT).show();
-            });
+            saveAsync(null);
         });
 
         markSlider.addOnChangeListener((slider, value, fromUser) -> {
@@ -190,6 +197,7 @@ public class MainActivity extends AppCompatActivity {
         setLoading(true);
         executor.execute(() -> {
             try {
+                String displayName = queryDisplayName(uri);
                 File dest = workingCopyFile();
                 try (InputStream in = getContentResolver().openInputStream(uri);
                      OutputStream out = new FileOutputStream(dest)) {
@@ -200,6 +208,7 @@ public class MainActivity extends AppCompatActivity {
                 }
                 getSharedPreferences(PREFS, MODE_PRIVATE).edit()
                         .putBoolean(KEY_HAS_WORKBOOK, true)
+                        .putString(KEY_DISPLAY_NAME, displayName)
                         .apply();
                 mainHandler.post(this::loadWorkbookAsync);
             } catch (Exception e) {
@@ -209,6 +218,18 @@ public class MainActivity extends AppCompatActivity {
                 });
             }
         });
+    }
+
+    private String queryDisplayName(Uri uri) {
+        try (Cursor c = getContentResolver().query(uri,
+                new String[]{OpenableColumns.DISPLAY_NAME}, null, null, null)) {
+            if (c != null && c.moveToFirst()) {
+                int idx = c.getColumnIndex(OpenableColumns.DISPLAY_NAME);
+                if (idx >= 0) return c.getString(idx);
+            }
+        } catch (Exception ignored) {
+        }
+        return null;
     }
 
     private void loadWorkbookAsync() {
@@ -386,9 +407,29 @@ public class MainActivity extends AppCompatActivity {
             try (FileOutputStream out = new FileOutputStream(workingCopyFile())) {
                 workbook.write(out);
             }
+            String exportedName = null;
+            String exportError = null;
+            try {
+                exportedName = exportToDownloads(workingCopyFile());
+            } catch (Exception e) {
+                exportError = e.getMessage();
+            }
+            final String finalExportedName = exportedName;
+            final String finalExportError = exportError;
             mainHandler.post(() -> {
                 dirty = false;
                 updateDirtyUi();
+                if (finalExportedName != null) {
+                    Toast.makeText(this,
+                            "Saved to Downloads/" + finalExportedName,
+                            Toast.LENGTH_LONG).show();
+                } else if (finalExportError != null) {
+                    Toast.makeText(this,
+                            "Saved locally; export to Downloads failed: " + finalExportError,
+                            Toast.LENGTH_LONG).show();
+                } else {
+                    Toast.makeText(this, "Saved", Toast.LENGTH_SHORT).show();
+                }
                 if (then != null) then.run();
             });
         } catch (Exception e) {
@@ -397,6 +438,62 @@ public class MainActivity extends AppCompatActivity {
                 if (then != null) then.run();
             });
         }
+    }
+
+    /**
+     * Copy the current workbook file to public Downloads under a "-graded" filename,
+     * overwriting any existing copy with the same name. Returns the filename used, or
+     * null if the platform lacks scoped MediaStore Downloads.
+     */
+    private String exportToDownloads(File src) throws Exception {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            return null;
+        }
+        String filename = buildExportFilename();
+        ContentResolver cr = getContentResolver();
+        Uri existing = findInDownloads(filename);
+        Uri target = existing;
+        if (target == null) {
+            ContentValues values = new ContentValues();
+            values.put(MediaStore.MediaColumns.DISPLAY_NAME, filename);
+            values.put(MediaStore.MediaColumns.MIME_TYPE, XLSX_MIME);
+            values.put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS);
+            target = cr.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values);
+            if (target == null) throw new Exception("insert returned null");
+        }
+        try (InputStream in = new FileInputStream(src);
+             OutputStream out = cr.openOutputStream(target, "wt")) {
+            if (out == null) throw new Exception("Could not open Downloads output");
+            byte[] buf = new byte[16 * 1024];
+            int n;
+            while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
+        }
+        return filename;
+    }
+
+    private Uri findInDownloads(String filename) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return null;
+        Uri collection = MediaStore.Downloads.EXTERNAL_CONTENT_URI;
+        String[] projection = {MediaStore.MediaColumns._ID};
+        String selection = MediaStore.MediaColumns.DISPLAY_NAME + " = ?";
+        String[] args = {filename};
+        try (Cursor c = getContentResolver().query(collection, projection, selection, args, null)) {
+            if (c != null && c.moveToFirst()) {
+                return ContentUris.withAppendedId(collection, c.getLong(0));
+            }
+        } catch (Exception ignored) {
+        }
+        return null;
+    }
+
+    private String buildExportFilename() {
+        String display = getSharedPreferences(PREFS, MODE_PRIVATE).getString(KEY_DISPLAY_NAME, null);
+        if (display == null || display.isEmpty()) {
+            return "graded.xlsx";
+        }
+        int dot = display.lastIndexOf('.');
+        String base = dot > 0 ? display.substring(0, dot) : display;
+        return base + "-graded.xlsx";
     }
 
     private void showPicker() {
