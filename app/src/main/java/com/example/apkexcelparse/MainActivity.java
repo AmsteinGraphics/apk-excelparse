@@ -383,6 +383,14 @@ public class MainActivity extends AppCompatActivity {
         render();
     }
 
+    /** Jump straight to a group's first criterion page (used by the overview table name links). */
+    private void jumpToGroup(int firstCriterionIndex) {
+        if (model == null) return;
+        overviewReturnPage = -1; // deliberate jump to a criterion; abandon any GENERAL stash
+        pageIdx = firstCriterionIndex + 1;
+        render();
+    }
+
     private int indexOfGroupForCriterion(int criterionIndex) {
         for (int i = 0; i < model.groups.size(); i++) {
             Group g = model.groups.get(i);
@@ -493,7 +501,20 @@ public class MainActivity extends AppCompatActivity {
             dotsLp.gravity = Gravity.CENTER_VERTICAL;
             row.addView(dots, dotsLp);
 
-            row.addView(overviewCell(g.name != null ? g.name : "", false));
+            // Group name is a link that jumps straight to that group's first criterion page.
+            TextView nameCell = overviewCell(g.name != null ? g.name : "", false);
+            final int firstCriterionIndex = g.firstCriterionIndex;
+            nameCell.setTextColor(0xFF1976D2);
+            nameCell.setPaintFlags(nameCell.getPaintFlags() | android.graphics.Paint.UNDERLINE_TEXT_FLAG);
+            nameCell.setClickable(true);
+            nameCell.setFocusable(true);
+            android.util.TypedValue ripple = new android.util.TypedValue();
+            getTheme().resolveAttribute(android.R.attr.selectableItemBackground, ripple, true);
+            nameCell.setBackgroundResource(ripple.resourceId);
+            int pad = Math.round(dpToPx(8f)); // setBackgroundResource can reset padding; re-apply.
+            nameCell.setPadding(pad, 0, pad, 0);
+            nameCell.setOnClickListener(v -> jumpToGroup(firstCriterionIndex));
+            row.addView(nameCell);
 
             Double avg = XlsxParser.readNumericAt(workbook, s, g.averageColumnIndex, formulaEvaluator);
             String avgText = (avg == null || avg.isNaN())
