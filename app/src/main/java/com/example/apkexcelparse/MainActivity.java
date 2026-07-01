@@ -18,6 +18,7 @@ import android.provider.Settings;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
+import android.widget.PopupMenu;
 import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -129,6 +130,8 @@ public class MainActivity extends AppCompatActivity {
         dotProgressView = findViewById(R.id.dotProgressView);
 
         findViewById(R.id.pickButton).setOnClickListener(v -> launchPicker());
+        findViewById(R.id.pickerCheckUpdatesButton).setOnClickListener(v -> checkForUpdates());
+        findViewById(R.id.menuButton).setOnClickListener(this::showOverflowMenu);
         prevButton.setOnClickListener(v -> navigate(-1));
         nextButton.setOnClickListener(v -> navigate(1));
         prevStudentButton.setOnClickListener(v -> navigateStudent(-1));
@@ -159,24 +162,16 @@ public class MainActivity extends AppCompatActivity {
     // until the user hits Save. Trade-off: if Android kills the process, in-memory
     // marks are lost. The dirty indicator makes pending state visible.
 
-    @Override
-    public boolean onCreateOptionsMenu(Menu menu) {
-        menu.add(0, 1, 0, R.string.change_file);
-        menu.add(0, 2, 1, R.string.check_updates);
-        return true;
-    }
-
-    @Override
-    public boolean onOptionsItemSelected(@androidx.annotation.NonNull MenuItem item) {
-        if (item.getItemId() == 1) {
-            launchPicker();
-            return true;
-        }
-        if (item.getItemId() == 2) {
-            checkForUpdates();
-            return true;
-        }
-        return super.onOptionsItemSelected(item);
+    private void showOverflowMenu(View anchor) {
+        PopupMenu menu = new PopupMenu(this, anchor);
+        menu.getMenu().add(0, 1, 0, R.string.change_file);
+        menu.getMenu().add(0, 2, 1, R.string.check_updates);
+        menu.setOnMenuItemClickListener(item -> {
+            if (item.getItemId() == 1) { launchPicker(); return true; }
+            if (item.getItemId() == 2) { checkForUpdates(); return true; }
+            return false;
+        });
+        menu.show();
     }
 
     private void launchPicker() {
