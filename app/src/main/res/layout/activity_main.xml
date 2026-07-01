@@ -193,90 +193,90 @@
             android:paddingEnd="12dp"
             android:paddingBottom="16dp">
 
-            <!-- Mark radio buttons: 1.00 on top, 0.50/0.75, then 0.00/0.25 (colours set in code). -->
+            <!-- Mark buttons: one row, 0 ¼ ½ ¾ 1 left→right. Blue when selected, outlined when not
+                 (states set in code). -->
             <LinearLayout
                 android:id="@+id/markButtonsContainer"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="vertical"
+                android:orientation="horizontal"
+                android:weightSum="5"
                 android:layout_marginBottom="8dp">
 
                 <com.google.android.material.button.MaterialButton
-                    android:id="@+id/btnMark4"
-                    android:layout_width="match_parent"
+                    android:id="@+id/btnMark0"
+                    style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                    android:layout_width="0dp"
                     android:layout_height="wrap_content"
+                    android:layout_weight="1"
                     android:layout_marginStart="4dp"
                     android:layout_marginEnd="4dp"
+                    android:minWidth="0dp"
+                    android:insetLeft="0dp"
+                    android:insetRight="0dp"
                     android:insetTop="0dp"
                     android:insetBottom="0dp"
-                    android:textColor="#000000"
-                    android:text="1.00" />
+                    android:text="0" />
 
-                <LinearLayout
-                    android:layout_width="match_parent"
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnMark1"
+                    style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                    android:layout_width="0dp"
                     android:layout_height="wrap_content"
-                    android:orientation="horizontal"
-                    android:weightSum="2">
+                    android:layout_weight="1"
+                    android:layout_marginStart="4dp"
+                    android:layout_marginEnd="4dp"
+                    android:minWidth="0dp"
+                    android:insetLeft="0dp"
+                    android:insetRight="0dp"
+                    android:insetTop="0dp"
+                    android:insetBottom="0dp"
+                    android:text="¼" />
 
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/btnMark2"
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:layout_marginStart="4dp"
-                        android:layout_marginEnd="4dp"
-                        android:minWidth="0dp"
-                        android:insetTop="0dp"
-                        android:insetBottom="0dp"
-                        android:textColor="#000000"
-                        android:text="0.50" />
-
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/btnMark3"
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:layout_marginStart="4dp"
-                        android:layout_marginEnd="4dp"
-                        android:minWidth="0dp"
-                        android:insetTop="0dp"
-                        android:insetBottom="0dp"
-                        android:textColor="#000000"
-                        android:text="0.75" />
-                </LinearLayout>
-
-                <LinearLayout
-                    android:layout_width="match_parent"
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnMark2"
+                    style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                    android:layout_width="0dp"
                     android:layout_height="wrap_content"
-                    android:orientation="horizontal"
-                    android:weightSum="2">
+                    android:layout_weight="1"
+                    android:layout_marginStart="4dp"
+                    android:layout_marginEnd="4dp"
+                    android:minWidth="0dp"
+                    android:insetLeft="0dp"
+                    android:insetRight="0dp"
+                    android:insetTop="0dp"
+                    android:insetBottom="0dp"
+                    android:text="½" />
 
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/btnMark0"
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:layout_marginStart="4dp"
-                        android:layout_marginEnd="4dp"
-                        android:minWidth="0dp"
-                        android:insetTop="0dp"
-                        android:insetBottom="0dp"
-                        android:textColor="#000000"
-                        android:text="0.00" />
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnMark3"
+                    style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:layout_marginStart="4dp"
+                    android:layout_marginEnd="4dp"
+                    android:minWidth="0dp"
+                    android:insetLeft="0dp"
+                    android:insetRight="0dp"
+                    android:insetTop="0dp"
+                    android:insetBottom="0dp"
+                    android:text="¾" />
 
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/btnMark1"
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:layout_marginStart="4dp"
-                        android:layout_marginEnd="4dp"
-                        android:minWidth="0dp"
-                        android:insetTop="0dp"
-                        android:insetBottom="0dp"
-                        android:textColor="#000000"
-                        android:text="0.25" />
-                </LinearLayout>
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnMark4"
+                    style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:layout_marginStart="4dp"
+                    android:layout_marginEnd="4dp"
+                    android:minWidth="0dp"
+                    android:insetLeft="0dp"
+                    android:insetRight="0dp"
+                    android:insetTop="0dp"
+                    android:insetBottom="0dp"
+                    android:text="1" />
             </LinearLayout>
 
             <com.google.android.material.button.MaterialButton

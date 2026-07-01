@@ -40,6 +40,7 @@ import com.example.apkexcelparse.model.Student;
 import com.example.apkexcelparse.ui.DotProgressView;
 import com.example.apkexcelparse.xlsx.XlsxParser;
 import com.google.android.material.button.MaterialButton;
+import com.google.android.material.color.MaterialColors;
 import android.content.res.ColorStateList;
 
 import org.apache.poi.ss.usermodel.Cell;
@@ -115,12 +116,8 @@ public class MainActivity extends AppCompatActivity {
     private int overviewReturnPage = -1;
     private boolean dirty;
 
-    // Mark values for the 5 buttons, indexed to match dot buckets (0.00 … 1.00).
+    // Mark values for the 5 buttons, left→right (0 … 1).
     private static final float[] MARK_VALUES = {0f, 0.25f, 0.5f, 0.75f, 1f};
-    // Dot/button colours per bucket: 0.0 black, 0.25 red, 0.5 orange, 0.75 yellow, 1.0 green.
-    private static final int[] BUCKET_COLORS = {
-            0xFF000000, 0xFFEF5350, 0xFFFB8C00, 0xFFFDD835, 0xFF66BB6A,
-    };
 
     private final ActivityResultLauncher<String[]> pickFileLauncher =
             registerForActivityResult(new ActivityResultContracts.OpenDocument(), this::onFilePicked);
@@ -600,25 +597,18 @@ public class MainActivity extends AppCompatActivity {
     }
 
     /**
-     * Colour the mark buttons like their dots: the selected one at full tint, the rest at a 25%
-     * shade. Labels are black except the selected 0.00 button, whose label goes white for contrast.
+     * Selected mark button is filled blue (theme primary) with white text; the rest stay outlined
+     * (transparent fill, primary-coloured text) like the other buttons. -1 = nothing selected.
      */
     private void refreshMarkButtons(int selectedIndex) {
+        int primary = MaterialColors.getColor(this,
+                com.google.android.material.R.attr.colorPrimary, 0xFF1976D2);
         for (int i = 0; i < markButtons.length; i++) {
             boolean selected = i == selectedIndex;
-            int bg = selected ? BUCKET_COLORS[i] : shade25(BUCKET_COLORS[i]);
-            markButtons[i].setBackgroundTintList(ColorStateList.valueOf(bg));
-            int textColor = (selected && i == 0) ? 0xFFFFFFFF : 0xFF000000;
-            markButtons[i].setTextColor(textColor);
+            markButtons[i].setBackgroundTintList(
+                    ColorStateList.valueOf(selected ? primary : 0x00000000));
+            markButtons[i].setTextColor(selected ? 0xFFFFFFFF : primary);
         }
-    }
-
-    /** 25% of the colour blended over white — a pale version of the same hue. */
-    private static int shade25(int color) {
-        int r = (int) (((color >> 16) & 0xFF) * 0.25f + 255 * 0.75f);
-        int g = (int) (((color >> 8) & 0xFF) * 0.25f + 255 * 0.75f);
-        int b = (int) ((color & 0xFF) * 0.25f + 255 * 0.75f);
-        return 0xFF000000 | (r << 16) | (g << 8) | b;
     }
 
     /**
