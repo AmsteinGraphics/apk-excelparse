@@ -159,7 +159,8 @@ public class XlsxParser {
 
     /**
      * Extract the fill foreground color of a cell as [R, G, B] (0..255), or null if unfilled.
-     * Handles direct RGB, indexed, and themed+tinted fills.
+     * Prefers the tinted RGB (what Excel actually displays) — for direct RGB fills with no
+     * tint, POI returns the raw RGB unchanged.
      */
     private static int[] extractCellRgb(Cell cell) {
         if (!(cell instanceof XSSFCell)) return null;
@@ -168,14 +169,13 @@ public class XlsxParser {
         XSSFColor color = style.getFillForegroundColorColor();
         if (color == null) return null;
 
+        try {
+            int[] tinted = fromBytes(color.getRGBWithTint());
+            if (tinted != null) return tinted;
+        } catch (Exception ignored) {
+        }
         int[] rgb = fromBytes(color.getARGB());
         if (rgb == null) rgb = fromBytes(color.getRGB());
-        if (rgb == null) {
-            try {
-                rgb = fromBytes(color.getRGBWithTint());
-            } catch (Exception ignored) {
-            }
-        }
         return rgb;
     }
 
