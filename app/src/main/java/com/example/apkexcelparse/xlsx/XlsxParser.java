@@ -19,6 +19,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 public class XlsxParser {
@@ -53,9 +54,16 @@ public class XlsxParser {
         // Find the criterion header row + column-per-criterion mapping by scanning pale-blue cells.
         Map<Integer, String> criterionColumns = new HashMap<>(); // column -> criterion id
         Integer criterionHeaderRow = null;
+        Map<String, Integer> observedFills = new HashMap<>();
         for (Row row : eval) {
             for (Cell cell : row) {
-                if (!isBackgroundColor(cell, CRITERION_LABEL_RGB)) continue;
+                int[] rgb = extractCellRgb(cell);
+                if (rgb == null) continue;
+                if (!isNeutralWhite(rgb)) {
+                    String key = String.format(Locale.ROOT, "#%02X%02X%02X", rgb[0], rgb[1], rgb[2]);
+                    observedFills.merge(key, 1, Integer::sum);
+                }
+                if (!matchesRgb(rgb, CRITERION_LABEL_RGB)) continue;
                 String id = readCellString(cell);
                 if (id == null || id.isEmpty()) continue;
                 criterionColumns.put(cell.getColumnIndex(), id);
@@ -65,7 +73,9 @@ public class XlsxParser {
             }
         }
         if (criterionHeaderRow == null || criterionColumns.isEmpty()) {
-            throw new IllegalStateException("No criterion cells (pale blue) found in evaluation sheet");
+            throw new IllegalStateException(
+                    "No criterion cells (pale blue " + hex(CRITERION_LABEL_RGB) + ") found. "
+                            + "Colors observed on filled cells: " + topFills(observedFills, 8));
         }
 
         List<Integer> sortedColumns = new ArrayList<>(criterionColumns.keySet());
@@ -125,7 +135,8 @@ public class XlsxParser {
         if (row == null) row = eval.createRow(student.rowIndex);
         Cell cell = row.getCell(criterion.columnIndex);
         if (cell == null) return false; // don't create cells; only fill declared mark cells
-        if (!isBackgroundColor(cell, MARK_CELL_RGB)) return false;
+        int[] rgb = extractCellRgb(cell);
+        if (rgb == null || !matchesRgb(rgb, MARK_CELL_RGB)) return false;
         cell.setCellValue(value);
         return true;
     }
@@ -146,18 +157,62 @@ public class XlsxParser {
         return byId;
     }
 
-    private static boolean isBackgroundColor(Cell cell, int[] rgb) {
-        if (!(cell instanceof XSSFCell)) return false;
+    /**
+     * Extract the fill foreground color of a cell as [R, G, B] (0..255), or null if unfilled.
+     * Handles direct RGB, indexed, and themed+tinted fills.
+     */
+    private static int[] extractCellRgb(Cell cell) {
+        if (!(cell instanceof XSSFCell)) return null;
         XSSFCellStyle style = ((XSSFCell) cell).getCellStyle();
-        if (style == null) return false;
+        if (style == null) return null;
         XSSFColor color = style.getFillForegroundColorColor();
-        if (color == null) return false;
-        byte[] argb = color.getRGB();
-        if (argb == null || argb.length < 3) return false;
-        int offset = argb.length == 4 ? 1 : 0;
-        return (argb[offset] & 0xFF) == rgb[0]
-                && (argb[offset + 1] & 0xFF) == rgb[1]
-                && (argb[offset + 2] & 0xFF) == rgb[2];
+        if (color == null) return null;
+
+        int[] rgb = fromBytes(color.getARGB());
+        if (rgb == null) rgb = fromBytes(color.getRGB());
+        if (rgb == null) {
+            try {
+                rgb = fromBytes(color.getRGBWithTint());
+            } catch (Exception ignored) {
+            }
+        }
+        return rgb;
+    }
+
+    private static int[] fromBytes(byte[] bytes) {
+        if (bytes == null) return null;
+        if (bytes.length == 4) {
+            return new int[]{bytes[1] & 0xFF, bytes[2] & 0xFF, bytes[3] & 0xFF};
+        }
+        if (bytes.length == 3) {
+            return new int[]{bytes[0] & 0xFF, bytes[1] & 0xFF, bytes[2] & 0xFF};
+        }
+        return null;
+    }
+
+    private static boolean matchesRgb(int[] rgb, int[] target) {
+        int tol = 4;
+        return Math.abs(rgb[0] - target[0]) <= tol
+                && Math.abs(rgb[1] - target[1]) <= tol
+                && Math.abs(rgb[2] - target[2]) <= tol;
+    }
+
+    private static boolean isNeutralWhite(int[] rgb) {
+        return rgb[0] >= 250 && rgb[1] >= 250 && rgb[2] >= 250;
+    }
+
+    private static String hex(int[] rgb) {
+        return String.format(Locale.ROOT, "#%02X%02X%02X", rgb[0], rgb[1], rgb[2]);
+    }
+
+    private static String topFills(Map<String, Integer> fills, int n) {
+        if (fills.isEmpty()) return "(none)";
+        return fills.entrySet().stream()
+                .sorted((a, b) -> Integer.compare(b.getValue(), a.getValue()))
+                .limit(n)
+                .map(e -> e.getKey() + "×" + e.getValue())
+                .reduce((a, b) -> a + ", " + b)
+                .orElse("(none)");
     }
 
     private static String readCellString(Cell cell) {

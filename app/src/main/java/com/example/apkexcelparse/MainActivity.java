@@ -201,10 +201,18 @@ public class MainActivity extends AppCompatActivity {
                 mainHandler.post(() -> {
                     setLoading(false);
                     showPicker();
-                    Toast.makeText(this, "Could not load workbook: " + e.getMessage(), Toast.LENGTH_LONG).show();
+                    showErrorDialog("Could not load workbook", e.getMessage());
                 });
             }
         });
+    }
+
+    private void showErrorDialog(String title, String message) {
+        new androidx.appcompat.app.AlertDialog.Builder(this)
+                .setTitle(title)
+                .setMessage(message != null ? message : "(no details)")
+                .setPositiveButton(android.R.string.ok, null)
+                .show();
     }
 
     private void navigate(int delta) {
