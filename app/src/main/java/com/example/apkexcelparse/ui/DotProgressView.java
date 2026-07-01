@@ -87,13 +87,21 @@ public class DotProgressView extends View {
         return dp * getResources().getDisplayMetrics().density;
     }
 
+    // Highlight ring thickness (px the black circle extends beyond the dot), constant across scales.
+    private static final float HIGHLIGHT_OVERSHOOT_DP = 3f;
+
     @Override
     protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
         if (fixedSlotPx > 0f && values != null && values.length > 0) {
-            int w = Math.round(fixedSlotPx * values.length);
+            // Honour an exact width (fixed table cell) so dots left-pack in a uniform column;
+            // otherwise size to the dot string so the view wraps its content.
+            int wMode = MeasureSpec.getMode(widthMeasureSpec);
+            int w = wMode == MeasureSpec.EXACTLY
+                    ? MeasureSpec.getSize(widthMeasureSpec)
+                    : Math.round(fixedSlotPx * values.length);
             int hMode = MeasureSpec.getMode(heightMeasureSpec);
             int h = hMode == MeasureSpec.UNSPECIFIED
-                    ? Math.round(dpToPx(22f))
+                    ? Math.round(dpToPx(33f))
                     : MeasureSpec.getSize(heightMeasureSpec);
             setMeasuredDimension(w, h);
         } else {
@@ -109,20 +117,23 @@ public class DotProgressView extends View {
         int h = getHeight();
         if (w == 0 || h == 0) return;
         float slot = fixedSlotPx > 0f ? fixedSlotPx : (float) w / n;
+        float overshoot = dpToPx(HIGHLIGHT_OVERSHOOT_DP);
+        // Leave room so the highlight ring (dot + fixed overshoot) never spills out of the row.
+        float maxRadius = h * 0.5f - overshoot;
         float baseRadius = Math.min(slot * 0.42f, h * 0.34f);
         float cy = h / 2f;
         for (int i = 0; i < n; i++) {
             float cx = slot * (i + 0.5f);
             float scale = (scales != null && i < scales.length) ? scales[i] : 1f;
             float radius = baseRadius * scale;
-            // Keep dots inside the row vertically; horizontal overlap is intentional (weight cue).
-            radius = Math.min(radius, h * 0.5f);
+            // Keep dots (and the ring) inside the row; horizontal overlap is intentional (weight cue).
+            radius = Math.min(radius, maxRadius);
             if (radius < 1f) radius = 1f;
             if (i == highlightIndex) {
-                // Highlight ring: larger black circle drawn behind the current dot.
-                float highlightRadius = Math.min(Math.min(slot * 0.5f, h * 0.5f), radius * 1.7f);
+                // Highlight ring: a black circle a fixed number of px larger than the dot, so it
+                // reads as a constant-weight stroke regardless of the dot's coefficient scale.
                 fillPaint.setColor(0xFF000000);
-                canvas.drawCircle(cx, cy, highlightRadius, fillPaint);
+                canvas.drawCircle(cx, cy, radius + overshoot, fillPaint);
             }
             int v = values[i];
             if (v < 0 || v >= BUCKET_COLORS.length) {

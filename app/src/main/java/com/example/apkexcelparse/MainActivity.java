@@ -92,6 +92,8 @@ public class MainActivity extends AppCompatActivity {
     private MaterialButton nextButton;
     private MaterialButton prevStudentButton;
     private MaterialButton nextStudentButton;
+    private MaterialButton prevLetterButton;
+    private MaterialButton nextLetterButton;
     private MaterialButton prevGroupButton;
     private MaterialButton nextGroupButton;
     private MaterialButton overviewButton;
@@ -137,6 +139,8 @@ public class MainActivity extends AppCompatActivity {
         nextButton = findViewById(R.id.nextButton);
         prevStudentButton = findViewById(R.id.prevStudentButton);
         nextStudentButton = findViewById(R.id.nextStudentButton);
+        prevLetterButton = findViewById(R.id.prevLetterButton);
+        nextLetterButton = findViewById(R.id.nextLetterButton);
         prevGroupButton = findViewById(R.id.prevGroupButton);
         nextGroupButton = findViewById(R.id.nextGroupButton);
         overviewButton = findViewById(R.id.overviewButton);
@@ -153,6 +157,8 @@ public class MainActivity extends AppCompatActivity {
         nextButton.setOnClickListener(v -> navigate(1));
         prevStudentButton.setOnClickListener(v -> navigateStudent(-1));
         nextStudentButton.setOnClickListener(v -> navigateStudent(1));
+        prevLetterButton.setOnClickListener(v -> navigateLetter(-1));
+        nextLetterButton.setOnClickListener(v -> navigateLetter(1));
         prevGroupButton.setOnClickListener(v -> navigateGroup(-1));
         nextGroupButton.setOnClickListener(v -> navigateGroup(1));
         overviewButton.setOnClickListener(v -> toggleOverview());
@@ -319,12 +325,49 @@ public class MainActivity extends AppCompatActivity {
 
     private void navigateStudent(int delta) {
         if (model == null) return;
-        int newIdx = studentIdx + delta;
-        if (newIdx < 0) newIdx = 0;
-        if (newIdx >= model.students.size()) newIdx = model.students.size() - 1;
+        int size = model.students.size();
+        // Wrap around the roster; keeps the same page (overview stays overview) across students.
+        int newIdx = ((studentIdx + delta) % size + size) % size;
         if (newIdx == studentIdx) return;
-        studentIdx = newIdx; // keep the same page (overview stays overview) across students
+        studentIdx = newIdx;
         render();
+    }
+
+    /**
+     * Jump to the first student whose name starts with the previous/next starting letter that
+     * actually occurs in the roster, wrapping around the alphabet. Keeps the current page index.
+     */
+    private void navigateLetter(int delta) {
+        if (model == null || model.students.isEmpty()) return;
+        java.util.List<Character> letters = new java.util.ArrayList<>();
+        for (Student st : model.students) {
+            char c = firstLetter(st.name);
+            if (!letters.contains(c)) letters.add(c);
+        }
+        java.util.Collections.sort(letters);
+        int cur = letters.indexOf(firstLetter(model.students.get(studentIdx).name));
+        if (cur < 0) return;
+        int n = letters.size();
+        char target = letters.get(((cur + delta) % n + n) % n);
+        for (int i = 0; i < model.students.size(); i++) {
+            if (firstLetter(model.students.get(i).name) == target) {
+                if (i == studentIdx) return;
+                studentIdx = i;
+                render();
+                return;
+            }
+        }
+    }
+
+    /** First alphabetic character of a name, upper-cased; '#' if there is none. */
+    private static char firstLetter(String name) {
+        if (name != null) {
+            for (int i = 0; i < name.length(); i++) {
+                char c = name.charAt(i);
+                if (Character.isLetter(c)) return Character.toUpperCase(c);
+            }
+        }
+        return '#';
     }
 
     /** Jump to the first criterion page of the previous/next group. */
@@ -419,8 +462,18 @@ public class MainActivity extends AppCompatActivity {
     private void buildOverviewTable(Student s) {
         overviewTable.removeAllViews();
         if (model.criteria.isEmpty()) return;
+        // Let the name column (index 1) shrink/wrap so a long name can't push the average column
+        // off the right edge in portrait. No stretch — columns stay compact and left-packed.
+        overviewTable.setShrinkColumns(1);
         float slotPx = headerSlotPx();
-        int rowH = Math.round(dpToPx(22f));
+        int rowH = Math.round(dpToPx(33f));
+        // Fixed-width dots column = widest group's dot string, so every group name starts at the
+        // same x (dots stay left-packed inside it).
+        int maxDots = 1;
+        for (Group g : model.groups) {
+            maxDots = Math.max(maxDots, g.lastCriterionIndex - g.firstCriterionIndex + 1);
+        }
+        int dotsCellW = Math.round(slotPx * maxDots);
         for (Group g : model.groups) {
             TableRow row = new TableRow(this);
 
@@ -436,8 +489,7 @@ public class MainActivity extends AppCompatActivity {
             dots.setFixedSlotPx(slotPx);
             dots.setValues(buckets);
             dots.setScales(scales);
-            TableRow.LayoutParams dotsLp = new TableRow.LayoutParams(
-                    TableRow.LayoutParams.WRAP_CONTENT, rowH);
+            TableRow.LayoutParams dotsLp = new TableRow.LayoutParams(dotsCellW, rowH);
             dotsLp.gravity = Gravity.CENTER_VERTICAL;
             row.addView(dots, dotsLp);
 
@@ -455,9 +507,9 @@ public class MainActivity extends AppCompatActivity {
     private TextView overviewCell(String text, boolean bold) {
         TextView tv = new TextView(this);
         tv.setText(text);
-        tv.setTextSize(14f);
+        tv.setTextSize(11f);
         tv.setGravity(Gravity.CENTER_VERTICAL);
-        int pad = Math.round(dpToPx(10f));
+        int pad = Math.round(dpToPx(8f));
         tv.setPadding(pad, 0, pad, 0);
         if (bold) {
             tv.setTypeface(tv.getTypeface(), android.graphics.Typeface.BOLD);
