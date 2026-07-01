@@ -6,6 +6,7 @@ import com.example.apkexcelparse.model.Student;
 
 import org.apache.poi.ss.usermodel.Cell;
 import org.apache.poi.ss.usermodel.CellType;
+import org.apache.poi.ss.usermodel.FormulaEvaluator;
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.xssf.usermodel.XSSFCell;
@@ -37,6 +38,7 @@ public class XlsxParser {
     // Columns on the 'evaluation' sheet (0-indexed).
     private static final int COL_STUDENT_NUMBER = 0;
     private static final int COL_STUDENT_NAME = 1;
+    public static final int COL_STUDENT_AVERAGE = 89; // Excel column CL
 
     // Columns on the 'criteres_reviewed' sheet (0-indexed).
     private static final int META_COL_GROUP = 1;
@@ -144,6 +146,44 @@ public class XlsxParser {
         if (rgb == null || !matchesRgb(rgb, MARK_CELL_RGB)) return false;
         cell.setCellValue(value);
         return true;
+    }
+
+    /**
+     * Return the Cell at (student row, columnIndex) on the evaluation sheet, or null if missing.
+     * Useful for notifying a FormulaEvaluator after writing a mark.
+     */
+    public static Cell getEvalCell(XSSFWorkbook workbook, Student student, int columnIndex) {
+        Sheet eval = workbook.getSheet(EVALUATION_SHEET);
+        if (eval == null) return null;
+        Row row = eval.getRow(student.rowIndex);
+        if (row == null) return null;
+        return row.getCell(columnIndex);
+    }
+
+    /**
+     * Read a numeric cell value from the evaluation sheet, evaluating formulas if needed.
+     * Returns null if the cell is missing/blank/non-numeric.
+     */
+    public static Double readNumericAt(XSSFWorkbook workbook, Student student, int columnIndex,
+                                       FormulaEvaluator evaluator) {
+        Cell cell = getEvalCell(workbook, student, columnIndex);
+        if (cell == null) return null;
+        try {
+            if (cell.getCellType() == CellType.FORMULA) {
+                if (evaluator != null) {
+                    evaluator.evaluateFormulaCell(cell);
+                }
+                if (cell.getCachedFormulaResultType() == CellType.NUMERIC) {
+                    return cell.getNumericCellValue();
+                }
+                return null;
+            }
+            if (cell.getCellType() == CellType.NUMERIC) {
+                return cell.getNumericCellValue();
+            }
+        } catch (Exception ignored) {
+        }
+        return null;
     }
 
     private static Map<String, CriterionMeta> readCriterionMeta(Sheet meta) {

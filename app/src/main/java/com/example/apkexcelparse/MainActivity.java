@@ -21,10 +21,13 @@ import androidx.appcompat.app.AppCompatActivity;
 import com.example.apkexcelparse.model.Criterion;
 import com.example.apkexcelparse.model.GradingModel;
 import com.example.apkexcelparse.model.Student;
+import com.example.apkexcelparse.ui.DotProgressView;
 import com.example.apkexcelparse.xlsx.XlsxParser;
 import com.google.android.material.button.MaterialButton;
 import com.google.android.material.slider.Slider;
 
+import org.apache.poi.ss.usermodel.Cell;
+import org.apache.poi.ss.usermodel.FormulaEvaluator;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.json.JSONObject;
 
@@ -69,8 +72,11 @@ public class MainActivity extends AppCompatActivity {
     private MaterialButton nextStudentButton;
     private MaterialButton saveButton;
     private View dirtyIndicator;
+    private TextView studentAverage;
+    private DotProgressView dotProgressView;
 
     private XSSFWorkbook workbook;
+    private FormulaEvaluator formulaEvaluator;
     private GradingModel model;
     private int studentIdx;
     private int criterionIdx;
@@ -102,6 +108,8 @@ public class MainActivity extends AppCompatActivity {
         nextStudentButton = findViewById(R.id.nextStudentButton);
         saveButton = findViewById(R.id.saveButton);
         dirtyIndicator = findViewById(R.id.dirtyIndicator);
+        studentAverage = findViewById(R.id.studentAverage);
+        dotProgressView = findViewById(R.id.dotProgressView);
 
         findViewById(R.id.pickButton).setOnClickListener(v -> launchPicker());
         prevButton.setOnClickListener(v -> navigate(-1));
@@ -218,6 +226,7 @@ public class MainActivity extends AppCompatActivity {
                 }
                 mainHandler.post(() -> {
                     workbook = wb;
+                    formulaEvaluator = wb.getCreationHelper().createFormulaEvaluator();
                     model = m;
                     studentIdx = 0;
                     criterionIdx = 0;
@@ -291,6 +300,40 @@ public class MainActivity extends AppCompatActivity {
         markSlider.setValue(Math.round(value * 4f) / 4f);
         settingSliderProgrammatically = false;
         markLabel.setText(existing != null ? formatMark(value) : "—");
+
+        refreshDotsForStudent();
+        refreshStudentAverage();
+    }
+
+    private void refreshDotsForStudent() {
+        if (model == null || workbook == null || dotProgressView == null) return;
+        Student s = model.students.get(studentIdx);
+        int n = model.criteria.size();
+        int[] buckets = new int[n];
+        for (int i = 0; i < n; i++) {
+            Double mark = XlsxParser.readMark(workbook, s, model.criteria.get(i));
+            buckets[i] = markToBucket(mark);
+        }
+        dotProgressView.setValues(buckets);
+    }
+
+    private void refreshStudentAverage() {
+        if (model == null || workbook == null || studentAverage == null) return;
+        Student s = model.students.get(studentIdx);
+        Double avg = XlsxParser.readNumericAt(workbook, s, XlsxParser.COL_STUDENT_AVERAGE, formulaEvaluator);
+        if (avg == null || avg.isNaN()) {
+            studentAverage.setText("");
+        } else {
+            studentAverage.setText(String.format(Locale.getDefault(), "%.2f / 6", avg));
+        }
+    }
+
+    private static int markToBucket(Double value) {
+        if (value == null) return -1;
+        int b = (int) Math.round(value * 4);
+        if (b < 0) b = 0;
+        if (b > 4) b = 4;
+        return b;
     }
 
     private void applyMarkToWorkbook(float value) {
@@ -301,6 +344,12 @@ public class MainActivity extends AppCompatActivity {
         if (written) {
             dirty = true;
             updateDirtyUi();
+            if (formulaEvaluator != null) {
+                Cell cell = XlsxParser.getEvalCell(workbook, s, c.columnIndex);
+                if (cell != null) formulaEvaluator.notifyUpdateCell(cell);
+            }
+            dotProgressView.setValueAt(criterionIdx, markToBucket((double) value));
+            refreshStudentAverage();
         } else {
             Toast.makeText(this, "Cell not writable (not a mark cell)", Toast.LENGTH_SHORT).show();
         }
