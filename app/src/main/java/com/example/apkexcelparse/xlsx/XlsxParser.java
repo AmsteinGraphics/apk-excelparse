@@ -28,8 +28,11 @@ public class XlsxParser {
     private static final String CRITERIA_SHEET = "criteres_reviewed";
 
     // Excel fill colors that tag meaningful cells in the workbook.
+    // Note: criterion labels display as pale blue in Excel but come from a themed fill
+    // (Accent 1 + tint). POI's tint resolution differs from Excel's, so we match the
+    // RGB POI reports (#E6E9EB), not the pale-blue Excel shows.
     private static final int[] MARK_CELL_RGB = {0xD9, 0xD9, 0xD9};        // light gray
-    private static final int[] CRITERION_LABEL_RGB = {0xDA, 0xE9, 0xF8};  // pale blue
+    private static final int[] CRITERION_LABEL_RGB = {0xE6, 0xE9, 0xEB};  // themed blue as POI resolves it
 
     // Columns on the 'evaluation' sheet (0-indexed).
     private static final int COL_STUDENT_NUMBER = 0;
