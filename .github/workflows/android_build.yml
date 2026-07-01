@@ -50,6 +50,19 @@ jobs:
           name: android-debug-apk
           path: app/build/outputs/apk/debug/app-debug.apk
 
+      - name: Publish APK to rolling release
+        if: success() && github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: Latest debug build
+          body: |
+            Debug APK built from ${{ github.sha }}.
+            This tag rolls forward with each successful main build.
+          files: app/build/outputs/apk/debug/app-debug.apk
+          make_latest: 'true'
+          prerelease: false
+
       - name: Upload build log on failure
         if: failure()
         uses: actions/upload-artifact@v4
