@@ -65,6 +65,8 @@ public class MainActivity extends AppCompatActivity {
     private Slider markSlider;
     private MaterialButton prevButton;
     private MaterialButton nextButton;
+    private MaterialButton saveButton;
+    private View dirtyIndicator;
 
     private XSSFWorkbook workbook;
     private GradingModel model;
@@ -94,10 +96,22 @@ public class MainActivity extends AppCompatActivity {
         markSlider = findViewById(R.id.markSlider);
         prevButton = findViewById(R.id.prevButton);
         nextButton = findViewById(R.id.nextButton);
+        saveButton = findViewById(R.id.saveButton);
+        dirtyIndicator = findViewById(R.id.dirtyIndicator);
 
         findViewById(R.id.pickButton).setOnClickListener(v -> launchPicker());
         prevButton.setOnClickListener(v -> navigate(-1));
         nextButton.setOnClickListener(v -> navigate(1));
+        saveButton.setOnClickListener(v -> {
+            if (!dirty) {
+                Toast.makeText(this, "Nothing to save", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            saveAsync(() -> {
+                updateDirtyUi();
+                Toast.makeText(this, "Saved", Toast.LENGTH_SHORT).show();
+            });
+        });
 
         markSlider.addOnChangeListener((slider, value, fromUser) -> {
             if (settingSliderProgrammatically) return;
@@ -113,13 +127,9 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    @Override
-    protected void onPause() {
-        super.onPause();
-        if (dirty) {
-            saveAsync(null);
-        }
-    }
+    // onPause intentionally does NOT autosave. The workbook stays in memory
+    // until the user hits Save. Trade-off: if Android kills the process, in-memory
+    // marks are lost. The dirty indicator makes pending state visible.
 
     @Override
     public boolean onCreateOptionsMenu(Menu menu) {
@@ -142,6 +152,19 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void launchPicker() {
+        if (dirty) {
+            new androidx.appcompat.app.AlertDialog.Builder(this)
+                    .setTitle("Discard unsaved marks?")
+                    .setMessage("You have unsaved marks in the current workbook. Picking a new file will discard them.")
+                    .setPositiveButton("Discard", (d, w) -> doLaunchPicker())
+                    .setNegativeButton(android.R.string.cancel, null)
+                    .show();
+        } else {
+            doLaunchPicker();
+        }
+    }
+
+    private void doLaunchPicker() {
         pickFileLauncher.launch(new String[]{
                 "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 "application/octet-stream"
@@ -196,6 +219,7 @@ public class MainActivity extends AppCompatActivity {
                     setLoading(false);
                     showGrading();
                     render();
+                    updateDirtyUi();
                 });
             } catch (Exception e) {
                 mainHandler.post(() -> {
@@ -224,9 +248,6 @@ public class MainActivity extends AppCompatActivity {
         studentIdx = flat / model.criteria.size();
         criterionIdx = flat % model.criteria.size();
         render();
-        if (dirty) {
-            saveAsync(null);
-        }
     }
 
     private void render() {
@@ -263,8 +284,15 @@ public class MainActivity extends AppCompatActivity {
         boolean written = XlsxParser.writeMark(workbook, s, c, value);
         if (written) {
             dirty = true;
+            updateDirtyUi();
         } else {
             Toast.makeText(this, "Cell not writable (not a mark cell)", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private void updateDirtyUi() {
+        if (dirtyIndicator != null) {
+            dirtyIndicator.setVisibility(dirty ? View.VISIBLE : View.GONE);
         }
     }
 
@@ -295,6 +323,7 @@ public class MainActivity extends AppCompatActivity {
             }
             mainHandler.post(() -> {
                 dirty = false;
+                updateDirtyUi();
                 if (then != null) then.run();
             });
         } catch (Exception e) {
