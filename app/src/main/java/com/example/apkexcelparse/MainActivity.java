@@ -464,7 +464,7 @@ public class MainActivity extends AppCompatActivity {
         if (model.criteria.isEmpty()) return;
         // Let the name column (index 1) shrink/wrap so a long name can't push the average column
         // off the right edge in portrait. No stretch — columns stay compact and left-packed.
-        overviewTable.setShrinkColumns(1);
+        overviewTable.setColumnShrinkable(1, true);
         float slotPx = headerSlotPx();
         int rowH = Math.round(dpToPx(33f));
         // Fixed-width dots column = widest group's dot string, so every group name starts at the
