@@ -101,10 +101,12 @@ public class XlsxParser {
         List<Student> students = new ArrayList<>();
         for (Row row : eval) {
             if (row.getRowNum() <= criterionHeaderRow) continue;
+            Cell numberCell = row.getCell(COL_STUDENT_NUMBER);
+            if (!isNumeric(numberCell)) continue; // skip label rows like "coefficient du critère"
             Cell nameCell = row.getCell(COL_STUDENT_NAME);
             String name = readCellString(nameCell);
             if (name == null || name.isEmpty()) continue;
-            String number = readCellString(row.getCell(COL_STUDENT_NUMBER));
+            String number = readCellString(numberCell);
             students.add(new Student(row.getRowNum(), number, name));
         }
 
@@ -220,28 +222,41 @@ public class XlsxParser {
 
     private static String readCellString(Cell cell) {
         if (cell == null) return null;
-        switch (cell.getCellType()) {
+        CellType type = cell.getCellType();
+        if (type == CellType.FORMULA) {
+            type = cell.getCachedFormulaResultType();
+        }
+        switch (type) {
             case STRING:
-                return cell.getStringCellValue().trim();
-            case NUMERIC:
-                double d = cell.getNumericCellValue();
-                if (d == Math.floor(d) && !Double.isInfinite(d)) {
-                    return String.valueOf((long) d);
-                }
-                return String.valueOf(d);
-            case FORMULA:
                 try {
                     return cell.getStringCellValue().trim();
-                } catch (IllegalStateException ex) {
-                    try {
-                        return String.valueOf(cell.getNumericCellValue());
-                    } catch (IllegalStateException ignored) {
-                        return null;
-                    }
+                } catch (Exception ignored) {
+                    return null;
+                }
+            case NUMERIC:
+                try {
+                    return numericToString(cell.getNumericCellValue());
+                } catch (Exception ignored) {
+                    return null;
                 }
             default:
                 return null;
         }
+    }
+
+    private static String numericToString(double d) {
+        if (d == Math.floor(d) && !Double.isInfinite(d)) {
+            return String.valueOf((long) d);
+        }
+        return String.valueOf(d);
+    }
+
+    private static boolean isNumeric(Cell cell) {
+        if (cell == null) return false;
+        CellType type = cell.getCellType();
+        if (type == CellType.NUMERIC) return true;
+        if (type == CellType.FORMULA) return cell.getCachedFormulaResultType() == CellType.NUMERIC;
+        return false;
     }
 
     private static Double readCellDouble(Cell cell) {

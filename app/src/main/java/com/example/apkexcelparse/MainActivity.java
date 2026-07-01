@@ -223,10 +223,9 @@ public class MainActivity extends AppCompatActivity {
         if (flat >= total) flat = total - 1;
         studentIdx = flat / model.criteria.size();
         criterionIdx = flat % model.criteria.size();
+        render();
         if (dirty) {
-            saveAsync(this::render);
-        } else {
-            render();
+            saveAsync(null);
         }
     }
 
@@ -269,27 +268,41 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    private final java.util.concurrent.atomic.AtomicBoolean saveEnqueued =
+            new java.util.concurrent.atomic.AtomicBoolean(false);
+
     private void saveAsync(@Nullable Runnable then) {
         if (workbook == null) {
             if (then != null) then.run();
             return;
         }
-        executor.execute(() -> {
-            try {
-                try (FileOutputStream out = new FileOutputStream(workingCopyFile())) {
-                    workbook.write(out);
-                }
-                mainHandler.post(() -> {
-                    dirty = false;
-                    if (then != null) then.run();
-                });
-            } catch (Exception e) {
-                mainHandler.post(() -> {
-                    Toast.makeText(this, "Save failed: " + e.getMessage(), Toast.LENGTH_LONG).show();
-                    if (then != null) then.run();
-                });
+        if (then == null) {
+            // Fire-and-forget: at most one pending save at a time; later changes ride the next save.
+            if (!saveEnqueued.compareAndSet(false, true)) return;
+            executor.execute(() -> {
+                saveEnqueued.set(false);
+                performSave(null);
+            });
+        } else {
+            executor.execute(() -> performSave(then));
+        }
+    }
+
+    private void performSave(@Nullable Runnable then) {
+        try {
+            try (FileOutputStream out = new FileOutputStream(workingCopyFile())) {
+                workbook.write(out);
             }
-        });
+            mainHandler.post(() -> {
+                dirty = false;
+                if (then != null) then.run();
+            });
+        } catch (Exception e) {
+            mainHandler.post(() -> {
+                Toast.makeText(this, "Save failed: " + e.getMessage(), Toast.LENGTH_LONG).show();
+                if (then != null) then.run();
+            });
+        }
     }
 
     private void showPicker() {
