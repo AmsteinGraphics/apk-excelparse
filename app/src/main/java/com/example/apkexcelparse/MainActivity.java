@@ -602,7 +602,7 @@ public class MainActivity extends AppCompatActivity {
      */
     private void refreshMarkButtons(int selectedIndex) {
         int primary = MaterialColors.getColor(this,
-                com.google.android.material.R.attr.colorPrimary, 0xFF1976D2);
+                androidx.appcompat.R.attr.colorPrimary, 0xFF1976D2);
         for (int i = 0; i < markButtons.length; i++) {
             boolean selected = i == selectedIndex;
             markButtons[i].setBackgroundTintList(
