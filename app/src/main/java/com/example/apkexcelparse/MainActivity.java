@@ -15,11 +15,14 @@ import android.os.Looper;
 import android.provider.MediaStore;
 import android.provider.OpenableColumns;
 import android.provider.Settings;
+import android.view.Gravity;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
 import android.widget.PopupMenu;
 import android.widget.ProgressBar;
+import android.widget.TableLayout;
+import android.widget.TableRow;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -89,10 +92,14 @@ public class MainActivity extends AppCompatActivity {
     private MaterialButton nextButton;
     private MaterialButton prevStudentButton;
     private MaterialButton nextStudentButton;
+    private MaterialButton prevGroupButton;
+    private MaterialButton nextGroupButton;
+    private MaterialButton overviewButton;
     private MaterialButton saveButton;
     private View dirtyIndicator;
     private TextView studentAverage;
     private DotProgressView dotProgressView;
+    private TableLayout overviewTable;
 
     private XSSFWorkbook workbook;
     private FormulaEvaluator formulaEvaluator;
@@ -101,6 +108,9 @@ public class MainActivity extends AppCompatActivity {
     // Per-student page index: 0 = overview (general average + all dots, no grading),
     // 1..criteria.size() = criterion pages (criterion index = pageIdx - 1).
     private int pageIdx;
+    // When the OVERVIEW button jumps to the overview page it stashes the criterion page to
+    // return to here (>= 1). -1 = no pending return, so the button shows "OVERVIEW".
+    private int overviewReturnPage = -1;
     private boolean dirty;
     private boolean settingSliderProgrammatically;
 
@@ -127,10 +137,14 @@ public class MainActivity extends AppCompatActivity {
         nextButton = findViewById(R.id.nextButton);
         prevStudentButton = findViewById(R.id.prevStudentButton);
         nextStudentButton = findViewById(R.id.nextStudentButton);
+        prevGroupButton = findViewById(R.id.prevGroupButton);
+        nextGroupButton = findViewById(R.id.nextGroupButton);
+        overviewButton = findViewById(R.id.overviewButton);
         saveButton = findViewById(R.id.saveButton);
         dirtyIndicator = findViewById(R.id.dirtyIndicator);
         studentAverage = findViewById(R.id.studentAverage);
         dotProgressView = findViewById(R.id.dotProgressView);
+        overviewTable = findViewById(R.id.overviewTable);
 
         findViewById(R.id.pickButton).setOnClickListener(v -> launchPicker());
         findViewById(R.id.pickerCheckUpdatesButton).setOnClickListener(v -> checkForUpdates());
@@ -139,6 +153,9 @@ public class MainActivity extends AppCompatActivity {
         nextButton.setOnClickListener(v -> navigate(1));
         prevStudentButton.setOnClickListener(v -> navigateStudent(-1));
         nextStudentButton.setOnClickListener(v -> navigateStudent(1));
+        prevGroupButton.setOnClickListener(v -> navigateGroup(-1));
+        nextGroupButton.setOnClickListener(v -> navigateGroup(1));
+        overviewButton.setOnClickListener(v -> toggleOverview());
         saveButton.setOnClickListener(v -> {
             if (!dirty) {
                 Toast.makeText(this, "Nothing to save", Toast.LENGTH_SHORT).show();
@@ -256,6 +273,7 @@ public class MainActivity extends AppCompatActivity {
                     model = m;
                     studentIdx = 0;
                     pageIdx = 0;
+                    overviewReturnPage = -1;
                     dirty = false;
                     setLoading(false);
                     showGrading();
@@ -287,6 +305,8 @@ public class MainActivity extends AppCompatActivity {
 
     private void navigate(int delta) {
         if (model == null) return;
+        // Moving between criteria abandons any stashed "return to criterion" from OVERVIEW.
+        overviewReturnPage = -1;
         int perStudent = pagesPerStudent();
         int total = model.students.size() * perStudent;
         int flat = studentIdx * perStudent + pageIdx + delta;
@@ -307,6 +327,53 @@ public class MainActivity extends AppCompatActivity {
         render();
     }
 
+    /** Jump to the first criterion page of the previous/next group. */
+    private void navigateGroup(int delta) {
+        if (model == null || model.groups.isEmpty()) return;
+        // Landing on a criterion page abandons any stashed "return to criterion" from OVERVIEW.
+        overviewReturnPage = -1;
+        int curGroupIdx = isOverviewPage() ? -1 : indexOfGroupForCriterion(pageIdx - 1);
+        int target = curGroupIdx + delta;
+        if (target < 0) target = 0;
+        if (target >= model.groups.size()) target = model.groups.size() - 1;
+        pageIdx = model.groups.get(target).firstCriterionIndex + 1;
+        render();
+    }
+
+    private int indexOfGroupForCriterion(int criterionIndex) {
+        for (int i = 0; i < model.groups.size(); i++) {
+            Group g = model.groups.get(i);
+            if (criterionIndex >= g.firstCriterionIndex && criterionIndex <= g.lastCriterionIndex) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    /**
+     * OVERVIEW button. From a criterion page: stash the page and jump to the overview so the
+     * teacher can see the effect on the general grade. From that stashed state: return ("BACK").
+     */
+    private void toggleOverview() {
+        if (model == null) return;
+        if (overviewReturnPage >= 0) {
+            pageIdx = overviewReturnPage;
+            overviewReturnPage = -1;
+            render();
+        } else if (!isOverviewPage()) {
+            overviewReturnPage = pageIdx;
+            pageIdx = 0;
+            render();
+        }
+        // Already on the overview with nothing stashed: no-op.
+    }
+
+    private void updateOverviewButton() {
+        if (overviewButton == null) return;
+        overviewButton.setText(overviewReturnPage >= 0
+                ? R.string.overview_back : R.string.overview_button);
+    }
+
     private boolean isOverviewPage() {
         return pageIdx == 0;
     }
@@ -320,17 +387,18 @@ public class MainActivity extends AppCompatActivity {
         studentName.setText(s.name);
 
         if (isOverviewPage()) {
-            renderOverview();
+            renderOverview(s);
         } else {
             renderCriterion(model.criteria.get(pageIdx - 1), s);
         }
 
+        updateOverviewButton();
         refreshDots();
         refreshAverage();
     }
 
-    /** Overview page: general average + all dots, no criterion detail and no grading control. */
-    private void renderOverview() {
+    /** Overview page: general average + all dots + per-group table, no grading control. */
+    private void renderOverview(Student s) {
         criterionGroup.setText("vue générale");
         criterionGroup.setVisibility(View.VISIBLE);
         criterionIdCoef.setVisibility(View.GONE);
@@ -339,9 +407,91 @@ public class MainActivity extends AppCompatActivity {
         criterionRemarks.setVisibility(View.GONE);
         markLabel.setVisibility(View.GONE);
         markSlider.setVisibility(View.GONE);
+        buildOverviewTable(s);
+        overviewTable.setVisibility(View.VISIBLE);
+    }
+
+    /**
+     * Build the per-group overview table: one borderless row per group, each with the group's
+     * dots (same physical size and coefficient scaling as the header), the group name, and the
+     * group's grade (mark only). Rebuilt on every overview render so marks stay current.
+     */
+    private void buildOverviewTable(Student s) {
+        overviewTable.removeAllViews();
+        if (model.criteria.isEmpty()) return;
+        float slotPx = headerSlotPx();
+        int rowH = Math.round(dpToPx(22f));
+        for (Group g : model.groups) {
+            TableRow row = new TableRow(this);
+
+            int n = g.lastCriterionIndex - g.firstCriterionIndex + 1;
+            int[] buckets = new int[n];
+            float[] scales = new float[n];
+            for (int i = 0; i < n; i++) {
+                Criterion c = model.criteria.get(g.firstCriterionIndex + i);
+                buckets[i] = markToBucket(XlsxParser.readMark(workbook, s, c));
+                scales[i] = coefScale(c.coefficient);
+            }
+            DotProgressView dots = new DotProgressView(this);
+            dots.setFixedSlotPx(slotPx);
+            dots.setValues(buckets);
+            dots.setScales(scales);
+            TableRow.LayoutParams dotsLp = new TableRow.LayoutParams(
+                    TableRow.LayoutParams.WRAP_CONTENT, rowH);
+            dotsLp.gravity = Gravity.CENTER_VERTICAL;
+            row.addView(dots, dotsLp);
+
+            row.addView(overviewCell(g.name != null ? g.name : "", false));
+
+            Double avg = XlsxParser.readNumericAt(workbook, s, g.averageColumnIndex, formulaEvaluator);
+            String avgText = (avg == null || avg.isNaN())
+                    ? "" : String.format(Locale.getDefault(), "%.2f", avg);
+            row.addView(overviewCell(avgText, true));
+
+            overviewTable.addView(row);
+        }
+    }
+
+    private TextView overviewCell(String text, boolean bold) {
+        TextView tv = new TextView(this);
+        tv.setText(text);
+        tv.setTextSize(14f);
+        tv.setGravity(Gravity.CENTER_VERTICAL);
+        int pad = Math.round(dpToPx(10f));
+        tv.setPadding(pad, 0, pad, 0);
+        if (bold) {
+            tv.setTypeface(tv.getTypeface(), android.graphics.Typeface.BOLD);
+            tv.setTextColor(0xFF1976D2);
+        }
+        TableRow.LayoutParams lp = new TableRow.LayoutParams(
+                TableRow.LayoutParams.WRAP_CONTENT, TableRow.LayoutParams.MATCH_PARENT);
+        lp.gravity = Gravity.CENTER_VERTICAL;
+        tv.setLayoutParams(lp);
+        return tv;
+    }
+
+    /** Slot width (px) of one dot in the full-width header string of all criteria. */
+    private float headerSlotPx() {
+        float contentPx = getResources().getDisplayMetrics().widthPixels - dpToPx(48f);
+        int n = Math.max(1, model.criteria.size());
+        return contentPx / n;
+    }
+
+    /** Dot radius multiplier from a criterion coefficient: coef 2 → 1.0, ±0.25 per unit. */
+    private static float coefScale(Double coef) {
+        float c = coef != null ? coef.floatValue() : 2f;
+        float scale = 1f + (c - 2f) * 0.25f;
+        if (scale < 0.4f) scale = 0.4f;
+        if (scale > 2f) scale = 2f;
+        return scale;
+    }
+
+    private float dpToPx(float dp) {
+        return dp * getResources().getDisplayMetrics().density;
     }
 
     private void renderCriterion(Criterion c, Student s) {
+        overviewTable.setVisibility(View.GONE);
         criterionGroup.setVisibility(View.VISIBLE);
         criterionIdCoef.setVisibility(View.VISIBLE);
         criterionContract.setVisibility(View.VISIBLE);
@@ -390,11 +540,14 @@ public class MainActivity extends AppCompatActivity {
         }
         int n = last - first + 1;
         int[] buckets = new int[n];
+        float[] scales = new float[n];
         for (int i = 0; i < n; i++) {
-            Double mark = XlsxParser.readMark(workbook, s, model.criteria.get(first + i));
-            buckets[i] = markToBucket(mark);
+            Criterion c = model.criteria.get(first + i);
+            buckets[i] = markToBucket(XlsxParser.readMark(workbook, s, c));
+            scales[i] = coefScale(c.coefficient);
         }
         dotProgressView.setValues(buckets);
+        dotProgressView.setScales(scales);
         // Highlight the current criterion's dot on criterion pages; none on the overview.
         dotProgressView.setHighlightIndex(isOverviewPage() ? -1 : (pageIdx - 1) - first);
     }
@@ -415,7 +568,7 @@ public class MainActivity extends AppCompatActivity {
         if (avg == null || avg.isNaN()) {
             studentAverage.setText("");
         } else {
-            studentAverage.setText(String.format(Locale.getDefault(), "%.2f / 6", avg));
+            studentAverage.setText(String.format(Locale.getDefault(), "%.2f", avg));
         }
     }
 

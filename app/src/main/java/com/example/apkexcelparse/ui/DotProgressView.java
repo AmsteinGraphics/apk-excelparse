@@ -13,6 +13,8 @@ import android.view.View;
 public class DotProgressView extends View {
 
     private int[] values;
+    private float[] scales;          // per-dot radius multiplier (coefficient-based); null = all 1.0
+    private float fixedSlotPx = 0f;  // when > 0, dots use this slot width and left-pack instead of filling getWidth()
     private int highlightIndex = -1; // index of the dot to highlight, or -1 for none
 
     private final Paint fillPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -53,6 +55,22 @@ public class DotProgressView extends View {
         invalidate();
     }
 
+    /** Per-dot radius multipliers, parallel to the values array. null = every dot at 1.0. */
+    public void setScales(float[] scales) {
+        this.scales = scales;
+        invalidate();
+    }
+
+    /**
+     * Force a fixed slot width (px) per dot so several DotProgressViews render dots at an
+     * identical physical size regardless of their own width. 0 = fill the view width (default).
+     */
+    public void setFixedSlotPx(float slotPx) {
+        this.fixedSlotPx = slotPx;
+        requestLayout();
+        invalidate();
+    }
+
     public void setValueAt(int index, int bucket) {
         if (values == null || index < 0 || index >= values.length) return;
         values[index] = bucket;
@@ -70,21 +88,39 @@ public class DotProgressView extends View {
     }
 
     @Override
+    protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
+        if (fixedSlotPx > 0f && values != null && values.length > 0) {
+            int w = Math.round(fixedSlotPx * values.length);
+            int hMode = MeasureSpec.getMode(heightMeasureSpec);
+            int h = hMode == MeasureSpec.UNSPECIFIED
+                    ? Math.round(dpToPx(22f))
+                    : MeasureSpec.getSize(heightMeasureSpec);
+            setMeasuredDimension(w, h);
+        } else {
+            super.onMeasure(widthMeasureSpec, heightMeasureSpec);
+        }
+    }
+
+    @Override
     protected void onDraw(Canvas canvas) {
         if (values == null || values.length == 0) return;
         int n = values.length;
         int w = getWidth();
         int h = getHeight();
         if (w == 0 || h == 0) return;
-        float slot = (float) w / n;
-        float radius = Math.min(slot * 0.42f, h * 0.34f);
-        if (radius < 1f) radius = 1f;
-        // Highlight ring: larger black circle drawn behind the current dot.
-        float highlightRadius = Math.min(Math.min(slot * 0.5f, h * 0.5f), radius * 1.7f);
+        float slot = fixedSlotPx > 0f ? fixedSlotPx : (float) w / n;
+        float baseRadius = Math.min(slot * 0.42f, h * 0.34f);
         float cy = h / 2f;
         for (int i = 0; i < n; i++) {
             float cx = slot * (i + 0.5f);
+            float scale = (scales != null && i < scales.length) ? scales[i] : 1f;
+            float radius = baseRadius * scale;
+            // Keep dots inside the row vertically; horizontal overlap is intentional (weight cue).
+            radius = Math.min(radius, h * 0.5f);
+            if (radius < 1f) radius = 1f;
             if (i == highlightIndex) {
+                // Highlight ring: larger black circle drawn behind the current dot.
+                float highlightRadius = Math.min(Math.min(slot * 0.5f, h * 0.5f), radius * 1.7f);
                 fillPaint.setColor(0xFF000000);
                 canvas.drawCircle(cx, cy, highlightRadius, fillPaint);
             }
