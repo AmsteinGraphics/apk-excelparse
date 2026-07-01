@@ -1,7 +1,12 @@
 <resources>
     <string name="app_name">APK Excel Parse</string>
-    <string name="settings_title">Settings</string>
-    <string name="current_version">Current version: 1.0.0</string>
+    <string name="pick_file">Pick xlsx file</string>
+    <string name="change_file">Change file…</string>
     <string name="check_updates">Check for updates</string>
-    <string name="update_help">This checks the latest GitHub release and opens the release page.</string>
+    <string name="no_file_loaded">No workbook loaded yet. Pick an xlsx file to start grading.</string>
+    <string name="prev">Previous</string>
+    <string name="next">Next</string>
+    <string name="loading">Loading…</string>
+    <string name="saving">Saving…</string>
+    <string name="save_and_share">Save &amp; share</string>
 </resources>

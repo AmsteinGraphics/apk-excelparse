@@ -1,5 +1,5 @@
 <resources>
-    <style name="Theme.ApkExcelParse" parent="Theme.AppCompat.Light.NoActionBar">
+    <style name="Theme.ApkExcelParse" parent="Theme.MaterialComponents.Light.NoActionBar">
         <item name="colorPrimary">#1976D2</item>
         <item name="colorPrimaryDark">#0D47A1</item>
         <item name="colorAccent">#FF9800</item>
