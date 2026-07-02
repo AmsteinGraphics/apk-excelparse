@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">APK Excel Parse</string>
+    <string name="app_name">LAPIS Mark</string>
     <string name="pick_file">Pick xlsx file</string>
     <string name="change_file">Change file…</string>
     <string name="check_updates">Check for updates</string>

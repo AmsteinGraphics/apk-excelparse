@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- LAPIS Mark launcher background (deep red from the brand mark). -->
+    <color name="ic_launcher_background">#A70E13</color>
+</resources>
