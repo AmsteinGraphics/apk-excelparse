@@ -4,6 +4,7 @@ import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.util.AttributeSet;
+import android.view.MotionEvent;
 import android.view.View;
 
 /**
@@ -18,6 +19,11 @@ public class DotProgressView extends View {
     private String[] belowLabels;    // per-dot text drawn under the dot (criterion id); null = none
     private float fixedSlotPx = 0f;  // when > 0, dots use this slot width and left-pack instead of filling getWidth()
     private int highlightIndex = -1; // index of the dot to highlight, or -1 for none
+
+    /** Notified when a dot is tapped; index is the dot's position in the current values array. */
+    public interface OnDotTapListener { void onDotTap(int index); }
+    private OnDotTapListener tapListener;
+    private float downX, downY;
 
     // Coefficient digit text size — a fixed px size, identical regardless of the dot's scale.
     private static final float DIGIT_TEXT_DP = 12f;
@@ -114,6 +120,52 @@ public class DotProgressView extends View {
     public void setHighlightIndex(int index) {
         this.highlightIndex = index;
         invalidate();
+    }
+
+    /** Set (or clear, with null) a tap listener. When set, the whole slot column is tappable. */
+    public void setOnDotTapListener(OnDotTapListener l) {
+        this.tapListener = l;
+        setClickable(l != null);
+    }
+
+    private int slotIndexAt(float x) {
+        if (values == null || values.length == 0) return -1;
+        float slot = fixedSlotPx > 0f ? fixedSlotPx : (float) getWidth() / values.length;
+        if (slot <= 0f) return -1;
+        int idx = (int) (x / slot);
+        if (idx < 0) idx = 0;
+        if (idx >= values.length) idx = values.length - 1;
+        return idx;
+    }
+
+    @Override
+    public boolean onTouchEvent(MotionEvent e) {
+        if (tapListener == null) return super.onTouchEvent(e);
+        switch (e.getActionMasked()) {
+            case MotionEvent.ACTION_DOWN:
+                downX = e.getX();
+                downY = e.getY();
+                return true;
+            case MotionEvent.ACTION_UP:
+                // Treat as a tap only if the finger didn't travel far (not a scroll/fling).
+                float touchSlop = android.view.ViewConfiguration.get(getContext()).getScaledTouchSlop();
+                if (Math.abs(e.getX() - downX) <= touchSlop && Math.abs(e.getY() - downY) <= touchSlop) {
+                    int idx = slotIndexAt(e.getX());
+                    if (idx >= 0) {
+                        performClick();
+                        tapListener.onDotTap(idx);
+                    }
+                }
+                return true;
+            default:
+                return super.onTouchEvent(e);
+        }
+    }
+
+    @Override
+    public boolean performClick() {
+        super.performClick();
+        return true;
     }
 
     private float dpToPx(float dp) {

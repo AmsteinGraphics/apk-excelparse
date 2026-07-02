@@ -90,8 +90,6 @@ public class MainActivity extends AppCompatActivity {
     private View markButtonsContainer;
     private final MaterialButton[] markButtons = new MaterialButton[5];
     private MaterialButton clearMarkButton;
-    private MaterialButton prevButton;
-    private MaterialButton nextButton;
     private MaterialButton prevStudentButton;
     private MaterialButton nextStudentButton;
     private MaterialButton prevLetterButton;
@@ -144,8 +142,6 @@ public class MainActivity extends AppCompatActivity {
         markButtons[3] = findViewById(R.id.btnMark3);
         markButtons[4] = findViewById(R.id.btnMark4);
         clearMarkButton = findViewById(R.id.btnMarkClear);
-        prevButton = findViewById(R.id.prevButton);
-        nextButton = findViewById(R.id.nextButton);
         prevStudentButton = findViewById(R.id.prevStudentButton);
         nextStudentButton = findViewById(R.id.nextStudentButton);
         prevLetterButton = findViewById(R.id.prevLetterButton);
@@ -162,8 +158,6 @@ public class MainActivity extends AppCompatActivity {
         findViewById(R.id.pickButton).setOnClickListener(v -> launchPicker());
         findViewById(R.id.pickerCheckUpdatesButton).setOnClickListener(v -> checkForUpdates());
         findViewById(R.id.menuButton).setOnClickListener(this::showOverflowMenu);
-        prevButton.setOnClickListener(v -> navigate(-1));
-        nextButton.setOnClickListener(v -> navigate(1));
         prevStudentButton.setOnClickListener(v -> navigateStudent(-1));
         nextStudentButton.setOnClickListener(v -> navigateStudent(1));
         prevLetterButton.setOnClickListener(v -> navigateLetter(-1));
@@ -626,11 +620,26 @@ public class MainActivity extends AppCompatActivity {
         refreshMarkButtons(existing != null ? markToBucket(existing) : -1);
     }
 
-    /** A mark button was tapped: write its value and reflect the new selection. */
+    /**
+     * A mark button was tapped: write its value, then auto-advance to the next criterion (as if
+     * « critère › » were pressed) — unless this is the last criterion in the group, where the
+     * teacher must move on explicitly (tap another dot, or « groupe › »).
+     */
     private void onMarkButtonClicked(int index) {
         if (isOverviewPage()) return;
-        applyMarkToWorkbook(MARK_VALUES[index]);
-        refreshMarkButtons(index);
+        int criterionIndex = pageIdx - 1;
+        boolean written = applyMarkToWorkbook(MARK_VALUES[index]);
+        if (written && !isLastCriterionInGroup(criterionIndex)) {
+            navigate(1); // re-renders the next criterion (and its mark buttons)
+        } else {
+            refreshMarkButtons(index);
+        }
+    }
+
+    /** True if the criterion is the last of its group (or ungrouped) — where auto-advance stops. */
+    private boolean isLastCriterionInGroup(int criterionIndex) {
+        Group g = model.groupForCriterion(criterionIndex);
+        return g == null || criterionIndex >= g.lastCriterionIndex;
     }
 
     /** The "×" button: clear the mark for this criterion so it reads as ungraded (all blank). */
@@ -716,6 +725,18 @@ public class MainActivity extends AppCompatActivity {
         dotProgressView.setBelowLabels(overview ? null : critIds);
         // Highlight the current criterion's dot on criterion pages; none on the overview.
         dotProgressView.setHighlightIndex(overview ? -1 : (pageIdx - 1) - first);
+        // On criterion pages the dots are tappable to jump to that criterion within the group;
+        // the overview's all-criteria dots stay non-interactive.
+        final int groupFirst = first;
+        dotProgressView.setOnDotTapListener(overview ? null : idx -> goToCriterion(groupFirst + idx));
+    }
+
+    /** Jump to a specific criterion of the current student (used by tapping a group dot). */
+    private void goToCriterion(int criterionIndex) {
+        if (model == null || criterionIndex < 0 || criterionIndex >= model.criteria.size()) return;
+        overviewReturnPage = -1; // a within-student criterion move, like the old « critère » buttons
+        pageIdx = criterionIndex + 1;
+        render();
     }
 
     /** Compact coefficient string for a dot: "2" for integers, trailing zeros trimmed otherwise. */
@@ -767,8 +788,8 @@ public class MainActivity extends AppCompatActivity {
         return b;
     }
 
-    private void applyMarkToWorkbook(float value) {
-        if (model == null || workbook == null || isOverviewPage()) return;
+    private boolean applyMarkToWorkbook(float value) {
+        if (model == null || workbook == null || isOverviewPage()) return false;
         Student s = model.students.get(studentIdx);
         Criterion c = model.criteria.get(pageIdx - 1);
         boolean written = XlsxParser.writeMark(workbook, s, c, value);
@@ -784,6 +805,7 @@ public class MainActivity extends AppCompatActivity {
         } else {
             Toast.makeText(this, "Cell not writable (not a mark cell)", Toast.LENGTH_SHORT).show();
         }
+        return written;
     }
 
     private void updateDirtyUi() {
