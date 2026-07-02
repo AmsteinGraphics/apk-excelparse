@@ -14,12 +14,19 @@ public class DotProgressView extends View {
 
     private int[] values;
     private float[] scales;          // per-dot radius multiplier (coefficient-based); null = all 1.0
-    private String[] labels;         // per-dot centred text (e.g. coefficient); null = no labels
+    private String[] labels;         // per-dot centred text inside the dot (coefficient); null = no labels
+    private String[] belowLabels;    // per-dot text drawn under the dot (criterion id); null = none
     private float fixedSlotPx = 0f;  // when > 0, dots use this slot width and left-pack instead of filling getWidth()
     private int highlightIndex = -1; // index of the dot to highlight, or -1 for none
 
     // Coefficient digit text size — a fixed px size, identical regardless of the dot's scale.
     private static final float DIGIT_TEXT_DP = 12f;
+
+    // Height reserved at the bottom for the criterion-number line (only when belowLabels is set).
+    private static final float NUMBER_BAND_DP = 16f;
+
+    // Colour of both the blank-dot coefficient digit and the below-dot criterion number.
+    private static final int DIGIT_GRAY = 0xFF808080;
 
     // Base (coef-2, scale 1.0) dot radius. Fixed in dp — NOT derived from row height — so a taller
     // row only creates headroom for large-coefficient dots; it never enlarges the coef-2 dot.
@@ -74,9 +81,16 @@ public class DotProgressView extends View {
         invalidate();
     }
 
-    /** Per-dot centred labels (parallel to values). Drawn only on graded dots. null = no labels. */
+    /** Per-dot centred labels (parallel to values). Drawn inside every dot. null = no labels. */
     public void setLabels(String[] labels) {
         this.labels = labels;
+        invalidate();
+    }
+
+    /** Per-dot labels drawn under the dot on a fixed baseline (criterion id). null = none. */
+    public void setBelowLabels(String[] belowLabels) {
+        this.belowLabels = belowLabels;
+        requestLayout();
         invalidate();
     }
 
@@ -147,11 +161,17 @@ public class DotProgressView extends View {
         if (w == 0 || h == 0) return;
         float slot = fixedSlotPx > 0f ? fixedSlotPx : (float) w / n;
         float overshoot = dpToPx(HIGHLIGHT_OVERSHOOT_DP);
-        // Leave room so the highlight ring (dot + fixed overshoot) never spills out of the row.
-        float maxRadius = h * 0.5f - overshoot;
+        // Reserve a bottom band for the criterion-number line; dots occupy the area above it.
+        boolean hasBelow = belowLabels != null;
+        float numBand = hasBelow ? dpToPx(NUMBER_BAND_DP) : 0f;
+        float dotAreaH = h - numBand;
+        // Leave room so the highlight ring (dot + fixed overshoot) never spills out of the dot area.
+        float maxRadius = dotAreaH * 0.5f - overshoot;
         // Base radius is a fixed dp (coef-2 size), still capped by the slot so crowded rows shrink.
         float baseRadius = Math.min(slot * 0.42f, dpToPx(BASE_RADIUS_DP));
-        float cy = h / 2f;
+        // Dot centres share one line; the number line sits at a fixed baseline below. A smaller dot's
+        // edge is higher, so its number reads as further away — that gap encodes coefficient weight.
+        float cy = dotAreaH / 2f;
         for (int i = 0; i < n; i++) {
             float cx = slot * (i + 0.5f);
             float scale = (scales != null && i < scales.length) ? scales[i] : 1f;
@@ -172,12 +192,21 @@ public class DotProgressView extends View {
                 canvas.drawCircle(cx, cy, radius, fillPaint);
                 canvas.drawCircle(cx, cy, radius, strokePaint);
                 // Coefficient digit on blank dots too, in 50% gray.
-                drawLabel(canvas, cx, cy, label, 0xFF808080);
+                drawLabel(canvas, cx, cy, label, DIGIT_GRAY);
             } else {
                 fillPaint.setColor(BUCKET_COLORS[v]);
                 canvas.drawCircle(cx, cy, radius, fillPaint);
                 // Coefficient digit, white, fixed size — on graded dots.
                 drawLabel(canvas, cx, cy, label, 0xFFFFFFFF);
+            }
+        }
+        // Criterion-number line: fixed baseline centred in the reserved bottom band, same size/colour
+        // as the (gray) coefficient digit. Dots share one centre, so this line is a constant y.
+        if (hasBelow) {
+            float bandCenter = dotAreaH + numBand / 2f;
+            for (int i = 0; i < n; i++) {
+                String below = i < belowLabels.length ? belowLabels[i] : null;
+                drawLabel(canvas, slot * (i + 0.5f), bandCenter, below, DIGIT_GRAY);
             }
         }
     }

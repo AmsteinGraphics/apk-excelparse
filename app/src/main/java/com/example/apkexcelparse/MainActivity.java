@@ -582,16 +582,14 @@ public class MainActivity extends AppCompatActivity {
     private void renderCriterion(Criterion c, Student s) {
         overviewTable.setVisibility(View.GONE);
         criterionGroup.setVisibility(View.VISIBLE);
-        criterionIdCoef.setVisibility(View.VISIBLE);
+        // "critère N · coefficient X" line removed — the criterion id now sits under each dot and the
+        // coefficient inside each dot, so this text row is redundant.
+        criterionIdCoef.setVisibility(View.GONE);
         criterionContract.setVisibility(View.VISIBLE);
         criterionRemarks.setVisibility(View.VISIBLE);
         markButtonsContainer.setVisibility(View.VISIBLE);
 
         criterionGroup.setText(c.groupName != null ? c.groupName : "");
-        String coefText = c.coefficient != null
-                ? String.format(Locale.getDefault(), "critère %s  ·  coefficient %s", c.id, formatCoef(c.coefficient))
-                : String.format(Locale.getDefault(), "critère %s", c.id);
-        criterionIdCoef.setText(coefText);
         criterionContract.setText(c.contract != null ? c.contract : "");
         criterionRemarks.setText(c.remarks != null ? c.remarks : "");
 
@@ -661,19 +659,22 @@ public class MainActivity extends AppCompatActivity {
                 first = last = pageIdx - 1;
             }
         }
+        boolean overview = isOverviewPage();
         int n = last - first + 1;
         int[] buckets = new int[n];
         float[] scales = new float[n];
         String[] labels = new String[n];
+        String[] critIds = new String[n];
         for (int i = 0; i < n; i++) {
             Criterion c = model.criteria.get(first + i);
             buckets[i] = markToBucket(XlsxParser.readMark(workbook, s, c));
             scales[i] = coefScale(c.coefficient, 0.33f);
             labels[i] = coefDigit(c.coefficient);
+            critIds[i] = c.id;
         }
-        // Criterion pages need a taller row so the heaviest dots (coef 4 → 2× the coef-2 size)
-        // render full-size instead of being clamped; the overview's tiny all-criteria dots stay 33dp.
-        int rowDp = isOverviewPage() ? 33 : 52;
+        // Criterion pages need a taller row: headroom for heavy-coef dots plus the number band under
+        // them; the overview's tiny all-criteria dots (no number line) stay 33dp.
+        int rowDp = overview ? 33 : 60;
         android.view.ViewGroup.LayoutParams lp = dotProgressView.getLayoutParams();
         int rowPx = Math.round(dpToPx(rowDp));
         if (lp.height != rowPx) {
@@ -682,10 +683,11 @@ public class MainActivity extends AppCompatActivity {
         }
         dotProgressView.setValues(buckets);
         dotProgressView.setScales(scales);
-        // Coefficient digit inside each dot on criterion pages only; the overview stays plain.
-        dotProgressView.setLabels(isOverviewPage() ? null : labels);
+        // Coefficient digit inside each dot + criterion id under each dot, criterion pages only.
+        dotProgressView.setLabels(overview ? null : labels);
+        dotProgressView.setBelowLabels(overview ? null : critIds);
         // Highlight the current criterion's dot on criterion pages; none on the overview.
-        dotProgressView.setHighlightIndex(isOverviewPage() ? -1 : (pageIdx - 1) - first);
+        dotProgressView.setHighlightIndex(overview ? -1 : (pageIdx - 1) - first);
     }
 
     /** Compact coefficient string for a dot: "2" for integers, trailing zeros trimmed otherwise. */
@@ -891,12 +893,6 @@ public class MainActivity extends AppCompatActivity {
             }
             workbook = null;
         }
-    }
-
-    private static String formatCoef(Double coef) {
-        if (coef == null) return "";
-        if (coef == Math.floor(coef)) return String.valueOf(coef.intValue());
-        return String.format(Locale.getDefault(), "%.2f", coef);
     }
 
     private void checkForUpdates() {
