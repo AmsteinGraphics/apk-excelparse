@@ -671,6 +671,15 @@ public class MainActivity extends AppCompatActivity {
             scales[i] = coefScale(c.coefficient, 0.33f);
             labels[i] = coefDigit(c.coefficient);
         }
+        // Criterion pages need a taller row so the heaviest dots (coef 4 → 2× the coef-2 size)
+        // render full-size instead of being clamped; the overview's tiny all-criteria dots stay 33dp.
+        int rowDp = isOverviewPage() ? 33 : 52;
+        android.view.ViewGroup.LayoutParams lp = dotProgressView.getLayoutParams();
+        int rowPx = Math.round(dpToPx(rowDp));
+        if (lp.height != rowPx) {
+            lp.height = rowPx;
+            dotProgressView.setLayoutParams(lp);
+        }
         dotProgressView.setValues(buckets);
         dotProgressView.setScales(scales);
         // Coefficient digit inside each dot on criterion pages only; the overview stays plain.

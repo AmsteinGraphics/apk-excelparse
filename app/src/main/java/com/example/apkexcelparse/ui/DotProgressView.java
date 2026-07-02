@@ -21,6 +21,11 @@ public class DotProgressView extends View {
     // Coefficient digit text size — a fixed px size, identical regardless of the dot's scale.
     private static final float DIGIT_TEXT_DP = 12f;
 
+    // Base (coef-2, scale 1.0) dot radius. Fixed in dp — NOT derived from row height — so a taller
+    // row only creates headroom for large-coefficient dots; it never enlarges the coef-2 dot.
+    // 11.2dp preserves the historical size (old formula was h·0.34 at a 33dp row).
+    private static final float BASE_RADIUS_DP = 11.2f;
+
     private final Paint fillPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint strokePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint textPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -144,7 +149,8 @@ public class DotProgressView extends View {
         float overshoot = dpToPx(HIGHLIGHT_OVERSHOOT_DP);
         // Leave room so the highlight ring (dot + fixed overshoot) never spills out of the row.
         float maxRadius = h * 0.5f - overshoot;
-        float baseRadius = Math.min(slot * 0.42f, h * 0.34f);
+        // Base radius is a fixed dp (coef-2 size), still capped by the slot so crowded rows shrink.
+        float baseRadius = Math.min(slot * 0.42f, dpToPx(BASE_RADIUS_DP));
         float cy = h / 2f;
         for (int i = 0; i < n; i++) {
             float cx = slot * (i + 0.5f);
