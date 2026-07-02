@@ -496,10 +496,12 @@ public class MainActivity extends AppCompatActivity {
             int n = g.lastCriterionIndex - g.firstCriterionIndex + 1;
             int[] buckets = new int[n];
             float[] scales = new float[n];
+            boolean hasUnmarked = false;
             for (int i = 0; i < n; i++) {
                 Criterion c = model.criteria.get(g.firstCriterionIndex + i);
                 buckets[i] = markToBucket(XlsxParser.readMark(workbook, s, c));
                 scales[i] = coefScale(c.coefficient);
+                if (buckets[i] < 0) hasUnmarked = true;
             }
             DotProgressView dots = new DotProgressView(this);
             dots.setFixedSlotPx(slotPx);
@@ -521,16 +523,42 @@ public class MainActivity extends AppCompatActivity {
             nameCell.setBackgroundResource(ripple.resourceId);
             int pad = Math.round(dpToPx(8f)); // setBackgroundResource can reset padding; re-apply.
             nameCell.setPadding(pad, 0, pad, 0);
+            // Red warning triangle before the link when this group still has an unmarked criterion,
+            // so the teacher spots immediately where evaluation is incomplete.
+            if (hasUnmarked) {
+                nameCell.setCompoundDrawablesWithIntrinsicBounds(redWarningTriangle(), null, null, null);
+                nameCell.setCompoundDrawablePadding(Math.round(dpToPx(4f)));
+            }
             nameCell.setOnClickListener(v -> jumpToGroup(firstCriterionIndex));
             row.addView(nameCell);
 
             Double avg = XlsxParser.readNumericAt(workbook, s, g.averageColumnIndex, formulaEvaluator);
             String avgText = (avg == null || avg.isNaN())
                     ? "" : String.format(Locale.getDefault(), "%.2f", avg);
-            row.addView(overviewCell(avgText, true));
+            TextView avgCell = overviewCell(avgText, true);
+            avgCell.setTextColor(avgColor(avg));
+            row.addView(avgCell);
 
             overviewTable.addView(row);
         }
+    }
+
+    /** Small filled red up-pointing triangle, sized in dp, for flagging incomplete groups. */
+    private android.graphics.drawable.Drawable redWarningTriangle() {
+        int px = Math.round(dpToPx(10f));
+        android.graphics.Path path = new android.graphics.Path();
+        path.moveTo(50f, 6f);
+        path.lineTo(96f, 94f);
+        path.lineTo(4f, 94f);
+        path.close();
+        android.graphics.drawable.ShapeDrawable d = new android.graphics.drawable.ShapeDrawable(
+                new android.graphics.drawable.shapes.PathShape(path, 100f, 100f));
+        d.getPaint().setColor(AVG_LOW_COLOR);
+        d.getPaint().setStyle(android.graphics.Paint.Style.FILL);
+        d.getPaint().setAntiAlias(true);
+        d.setIntrinsicWidth(px);
+        d.setIntrinsicHeight(px);
+        return d;
     }
 
     private TextView overviewCell(String text, boolean bold) {
@@ -718,6 +746,17 @@ public class MainActivity extends AppCompatActivity {
         } else {
             studentAverage.setText(String.format(Locale.getDefault(), "%.2f", avg));
         }
+        studentAverage.setTextColor(avgColor(avg));
+    }
+
+    // Averages are /6; a failing grade (< 4) is shown red, otherwise the normal blue.
+    private static final int AVG_LOW_COLOR = 0xFFD32F2F;
+    private static final int AVG_OK_COLOR = 0xFF1976D2;
+    private static final double AVG_LOW_THRESHOLD = 4.0;
+
+    /** Red when the /6 average is below the pass threshold, blue (or absent) otherwise. */
+    private static int avgColor(Double avg) {
+        return (avg != null && !avg.isNaN() && avg < AVG_LOW_THRESHOLD) ? AVG_LOW_COLOR : AVG_OK_COLOR;
     }
 
     private static int markToBucket(Double value) {
