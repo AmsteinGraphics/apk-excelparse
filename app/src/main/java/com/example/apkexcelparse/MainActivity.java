@@ -558,10 +558,18 @@ public class MainActivity extends AppCompatActivity {
         return contentPx / n;
     }
 
-    /** Dot radius multiplier from a criterion coefficient: coef 2 → 1.0, ±0.25 per unit. */
+    /** Dot radius multiplier from a criterion coefficient: coef 2 → 1.0, ±0.25 per unit (overview). */
     private static float coefScale(Double coef) {
+        return coefScale(coef, 0.25f);
+    }
+
+    /**
+     * Dot radius multiplier: coef 2 → 1.0, ±{@code step} per unit, clamped [0.4, 2.0].
+     * Criterion pages use a wider 0.33 step so the coefficient weight reads more strongly there.
+     */
+    private static float coefScale(Double coef, float step) {
         float c = coef != null ? coef.floatValue() : 2f;
-        float scale = 1f + (c - 2f) * 0.25f;
+        float scale = 1f + (c - 2f) * step;
         if (scale < 0.4f) scale = 0.4f;
         if (scale > 2f) scale = 2f;
         return scale;
@@ -660,7 +668,7 @@ public class MainActivity extends AppCompatActivity {
         for (int i = 0; i < n; i++) {
             Criterion c = model.criteria.get(first + i);
             buckets[i] = markToBucket(XlsxParser.readMark(workbook, s, c));
-            scales[i] = coefScale(c.coefficient);
+            scales[i] = coefScale(c.coefficient, 0.33f);
             labels[i] = coefDigit(c.coefficient);
         }
         dotProgressView.setValues(buckets);

@@ -123,6 +123,16 @@ public class DotProgressView extends View {
         }
     }
 
+    /** Draw a centred coefficient digit at the given colour, fixed px size regardless of dot scale. */
+    private void drawLabel(Canvas canvas, float cx, float cy, String text, int color) {
+        if (text == null) return;
+        textPaint.setColor(color);
+        textPaint.setTextSize(dpToPx(DIGIT_TEXT_DP));
+        Paint.FontMetrics fm = textPaint.getFontMetrics();
+        float baseline = cy - (fm.ascent + fm.descent) / 2f;
+        canvas.drawText(text, cx, baseline, textPaint);
+    }
+
     @Override
     protected void onDraw(Canvas canvas) {
         if (values == null || values.length == 0) return;
@@ -150,20 +160,18 @@ public class DotProgressView extends View {
                 canvas.drawCircle(cx, cy, radius + overshoot, fillPaint);
             }
             int v = values[i];
+            String label = (labels != null && i < labels.length) ? labels[i] : null;
             if (v < 0 || v >= BUCKET_COLORS.length) {
                 fillPaint.setColor(0xFFFFFFFF);
                 canvas.drawCircle(cx, cy, radius, fillPaint);
                 canvas.drawCircle(cx, cy, radius, strokePaint);
+                // Coefficient digit on blank dots too, in 50% gray.
+                drawLabel(canvas, cx, cy, label, 0xFF808080);
             } else {
                 fillPaint.setColor(BUCKET_COLORS[v]);
                 canvas.drawCircle(cx, cy, radius, fillPaint);
-                // Coefficient digit, white, fixed size — only on graded dots.
-                if (labels != null && i < labels.length && labels[i] != null) {
-                    textPaint.setTextSize(dpToPx(DIGIT_TEXT_DP));
-                    Paint.FontMetrics fm = textPaint.getFontMetrics();
-                    float baseline = cy - (fm.ascent + fm.descent) / 2f;
-                    canvas.drawText(labels[i], cx, baseline, textPaint);
-                }
+                // Coefficient digit, white, fixed size — on graded dots.
+                drawLabel(canvas, cx, cy, label, 0xFFFFFFFF);
             }
         }
     }
