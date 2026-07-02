@@ -174,6 +174,23 @@ public class XlsxParser {
     }
 
     /**
+     * Clear the mark in the (student, criterion) cell so it reads as ungraded again. Only touches
+     * cells tagged as mark cells. Returns true if cleared, false if the target is not a mark cell.
+     */
+    public static boolean eraseMark(XSSFWorkbook workbook, Student student, Criterion criterion) {
+        Sheet eval = workbook.getSheet(EVALUATION_SHEET);
+        if (eval == null) return false;
+        Row row = eval.getRow(student.rowIndex);
+        if (row == null) return false;
+        Cell cell = row.getCell(criterion.columnIndex);
+        if (cell == null) return false;
+        int[] rgb = extractCellRgb(cell);
+        if (rgb == null || !matchesRgb(rgb, MARK_CELL_RGB)) return false;
+        cell.setBlank();
+        return true;
+    }
+
+    /**
      * Return the Cell at (student row, columnIndex) on the evaluation sheet, or null if missing.
      * Useful for notifying a FormulaEvaluator after writing a mark.
      */

@@ -14,11 +14,16 @@ public class DotProgressView extends View {
 
     private int[] values;
     private float[] scales;          // per-dot radius multiplier (coefficient-based); null = all 1.0
+    private String[] labels;         // per-dot centred text (e.g. coefficient); null = no labels
     private float fixedSlotPx = 0f;  // when > 0, dots use this slot width and left-pack instead of filling getWidth()
     private int highlightIndex = -1; // index of the dot to highlight, or -1 for none
 
+    // Coefficient digit text size — a fixed px size, identical regardless of the dot's scale.
+    private static final float DIGIT_TEXT_DP = 12f;
+
     private final Paint fillPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint strokePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint textPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
 
     // 0.0 black, 0.25 red, 0.5 orange, 0.75 yellow, 1.0 green.
     private static final int[] BUCKET_COLORS = {
@@ -48,6 +53,9 @@ public class DotProgressView extends View {
         strokePaint.setStyle(Paint.Style.STROKE);
         strokePaint.setColor(0xFF000000);
         strokePaint.setStrokeWidth(dpToPx(0.75f));
+        textPaint.setColor(0xFFFFFFFF);
+        textPaint.setTextAlign(Paint.Align.CENTER);
+        textPaint.setFakeBoldText(true);
     }
 
     public void setValues(int[] values) {
@@ -58,6 +66,12 @@ public class DotProgressView extends View {
     /** Per-dot radius multipliers, parallel to the values array. null = every dot at 1.0. */
     public void setScales(float[] scales) {
         this.scales = scales;
+        invalidate();
+    }
+
+    /** Per-dot centred labels (parallel to values). Drawn only on graded dots. null = no labels. */
+    public void setLabels(String[] labels) {
+        this.labels = labels;
         invalidate();
     }
 
@@ -143,6 +157,13 @@ public class DotProgressView extends View {
             } else {
                 fillPaint.setColor(BUCKET_COLORS[v]);
                 canvas.drawCircle(cx, cy, radius, fillPaint);
+                // Coefficient digit, white, fixed size — only on graded dots.
+                if (labels != null && i < labels.length && labels[i] != null) {
+                    textPaint.setTextSize(dpToPx(DIGIT_TEXT_DP));
+                    Paint.FontMetrics fm = textPaint.getFontMetrics();
+                    float baseline = cy - (fm.ascent + fm.descent) / 2f;
+                    canvas.drawText(labels[i], cx, baseline, textPaint);
+                }
             }
         }
     }

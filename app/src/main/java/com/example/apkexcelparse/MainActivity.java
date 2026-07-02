@@ -89,6 +89,7 @@ public class MainActivity extends AppCompatActivity {
     private TextView criterionRemarks;
     private View markButtonsContainer;
     private final MaterialButton[] markButtons = new MaterialButton[5];
+    private MaterialButton clearMarkButton;
     private MaterialButton prevButton;
     private MaterialButton nextButton;
     private MaterialButton prevStudentButton;
@@ -142,6 +143,7 @@ public class MainActivity extends AppCompatActivity {
         markButtons[2] = findViewById(R.id.btnMark2);
         markButtons[3] = findViewById(R.id.btnMark3);
         markButtons[4] = findViewById(R.id.btnMark4);
+        clearMarkButton = findViewById(R.id.btnMarkClear);
         prevButton = findViewById(R.id.prevButton);
         nextButton = findViewById(R.id.nextButton);
         prevStudentButton = findViewById(R.id.prevStudentButton);
@@ -181,6 +183,7 @@ public class MainActivity extends AppCompatActivity {
             final int idx = i;
             markButtons[i].setOnClickListener(v -> onMarkButtonClicked(idx));
         }
+        clearMarkButton.setOnClickListener(v -> onClearMark());
 
         SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
         if (prefs.getBoolean(KEY_HAS_WORKBOOK, false) && workingCopyFile().exists()) {
@@ -596,6 +599,24 @@ public class MainActivity extends AppCompatActivity {
         refreshMarkButtons(index);
     }
 
+    /** The "×" button: clear the mark for this criterion so it reads as ungraded (all blank). */
+    private void onClearMark() {
+        if (model == null || workbook == null || isOverviewPage()) return;
+        Student s = model.students.get(studentIdx);
+        Criterion c = model.criteria.get(pageIdx - 1);
+        if (XlsxParser.eraseMark(workbook, s, c)) {
+            dirty = true;
+            updateDirtyUi();
+            if (formulaEvaluator != null) {
+                Cell cell = XlsxParser.getEvalCell(workbook, s, c.columnIndex);
+                if (cell != null) formulaEvaluator.notifyUpdateCell(cell);
+            }
+            refreshDots();
+            refreshAverage();
+        }
+        refreshMarkButtons(-1);
+    }
+
     /**
      * Selected mark button is filled blue (theme primary) with white text; the rest stay outlined
      * (transparent fill, primary-coloured text) like the other buttons. -1 = nothing selected.
@@ -635,15 +656,29 @@ public class MainActivity extends AppCompatActivity {
         int n = last - first + 1;
         int[] buckets = new int[n];
         float[] scales = new float[n];
+        String[] labels = new String[n];
         for (int i = 0; i < n; i++) {
             Criterion c = model.criteria.get(first + i);
             buckets[i] = markToBucket(XlsxParser.readMark(workbook, s, c));
             scales[i] = coefScale(c.coefficient);
+            labels[i] = coefDigit(c.coefficient);
         }
         dotProgressView.setValues(buckets);
         dotProgressView.setScales(scales);
+        // Coefficient digit inside each dot on criterion pages only; the overview stays plain.
+        dotProgressView.setLabels(isOverviewPage() ? null : labels);
         // Highlight the current criterion's dot on criterion pages; none on the overview.
         dotProgressView.setHighlightIndex(isOverviewPage() ? -1 : (pageIdx - 1) - first);
+    }
+
+    /** Compact coefficient string for a dot: "2" for integers, trailing zeros trimmed otherwise. */
+    private static String coefDigit(Double coef) {
+        if (coef == null) return null;
+        if (coef == Math.floor(coef)) return String.valueOf(coef.intValue());
+        String s = String.format(Locale.getDefault(), "%.2f", coef);
+        while (s.endsWith("0")) s = s.substring(0, s.length() - 1);
+        if (s.endsWith(".") || s.endsWith(",")) s = s.substring(0, s.length() - 1);
+        return s;
     }
 
     /**
