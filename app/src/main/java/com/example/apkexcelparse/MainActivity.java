@@ -307,25 +307,6 @@ public class MainActivity extends AppCompatActivity {
                 .show();
     }
 
-    // Pages per student: one overview page (index 0) plus one page per criterion.
-    private int pagesPerStudent() {
-        return model.criteria.size() + 1;
-    }
-
-    private void navigate(int delta) {
-        if (model == null) return;
-        // Moving between criteria abandons any stashed "return to criterion" from OVERVIEW.
-        overviewReturnPage = -1;
-        int perStudent = pagesPerStudent();
-        int total = model.students.size() * perStudent;
-        int flat = studentIdx * perStudent + pageIdx + delta;
-        if (flat < 0) flat = 0;
-        if (flat >= total) flat = total - 1;
-        studentIdx = flat / perStudent;
-        pageIdx = flat % perStudent;
-        render();
-    }
-
     private void navigateStudent(int delta) {
         if (model == null) return;
         int size = model.students.size();
@@ -517,12 +498,6 @@ public class MainActivity extends AppCompatActivity {
             nameCell.setBackgroundResource(ripple.resourceId);
             int pad = Math.round(dpToPx(8f)); // setBackgroundResource can reset padding; re-apply.
             nameCell.setPadding(pad, 0, pad, 0);
-            // Red warning triangle before the link when this group still has an unmarked criterion,
-            // so the teacher spots immediately where evaluation is incomplete.
-            if (hasUnmarked) {
-                nameCell.setCompoundDrawablesWithIntrinsicBounds(redWarningTriangle(), null, null, null);
-                nameCell.setCompoundDrawablePadding(Math.round(dpToPx(4f)));
-            }
             nameCell.setOnClickListener(v -> jumpToGroup(firstCriterionIndex));
             row.addView(nameCell);
 
@@ -530,29 +505,13 @@ public class MainActivity extends AppCompatActivity {
             String avgText = (avg == null || avg.isNaN())
                     ? "" : String.format(Locale.getDefault(), "%.2f", avg);
             TextView avgCell = overviewCell(avgText, true);
-            avgCell.setTextColor(avgColor(avg));
+            // A group with an unmarked criterion has an incomplete (not yet meaningful) average, so
+            // it is shown light gray; otherwise the usual red-below-4 / blue colouring applies.
+            avgCell.setTextColor(hasUnmarked ? AVG_INCOMPLETE_COLOR : avgColor(avg));
             row.addView(avgCell);
 
             overviewTable.addView(row);
         }
-    }
-
-    /** Small filled red up-pointing triangle, sized in dp, for flagging incomplete groups. */
-    private android.graphics.drawable.Drawable redWarningTriangle() {
-        int px = Math.round(dpToPx(10f));
-        android.graphics.Path path = new android.graphics.Path();
-        path.moveTo(50f, 6f);
-        path.lineTo(96f, 94f);
-        path.lineTo(4f, 94f);
-        path.close();
-        android.graphics.drawable.ShapeDrawable d = new android.graphics.drawable.ShapeDrawable(
-                new android.graphics.drawable.shapes.PathShape(path, 100f, 100f));
-        d.getPaint().setColor(AVG_LOW_COLOR);
-        d.getPaint().setStyle(android.graphics.Paint.Style.FILL);
-        d.getPaint().setAntiAlias(true);
-        d.setIntrinsicWidth(px);
-        d.setIntrinsicHeight(px);
-        return d;
     }
 
     private TextView overviewCell(String text, boolean bold) {
@@ -620,26 +579,11 @@ public class MainActivity extends AppCompatActivity {
         refreshMarkButtons(existing != null ? markToBucket(existing) : -1);
     }
 
-    /**
-     * A mark button was tapped: write its value, then auto-advance to the next criterion (as if
-     * « critère › » were pressed) — unless this is the last criterion in the group, where the
-     * teacher must move on explicitly (tap another dot, or « groupe › »).
-     */
+    /** A mark button was tapped: write its value and reflect the new selection (no auto-advance). */
     private void onMarkButtonClicked(int index) {
         if (isOverviewPage()) return;
-        int criterionIndex = pageIdx - 1;
-        boolean written = applyMarkToWorkbook(MARK_VALUES[index]);
-        if (written && !isLastCriterionInGroup(criterionIndex)) {
-            navigate(1); // re-renders the next criterion (and its mark buttons)
-        } else {
-            refreshMarkButtons(index);
-        }
-    }
-
-    /** True if the criterion is the last of its group (or ungrouped) — where auto-advance stops. */
-    private boolean isLastCriterionInGroup(int criterionIndex) {
-        Group g = model.groupForCriterion(criterionIndex);
-        return g == null || criterionIndex >= g.lastCriterionIndex;
+        applyMarkToWorkbook(MARK_VALUES[index]);
+        refreshMarkButtons(index);
     }
 
     /** The "×" button: clear the mark for this criterion so it reads as ungraded (all blank). */
@@ -773,6 +717,8 @@ public class MainActivity extends AppCompatActivity {
     // Averages are /6; a failing grade (< 4) is shown red, otherwise the normal blue.
     private static final int AVG_LOW_COLOR = 0xFFD32F2F;
     private static final int AVG_OK_COLOR = 0xFF1976D2;
+    // Overview group average shown light gray when the group still has an unmarked criterion.
+    private static final int AVG_INCOMPLETE_COLOR = 0xFFCCCCCC;
     private static final double AVG_LOW_THRESHOLD = 4.0;
 
     /** Red when the /6 average is below the pass threshold, blue (or absent) otherwise. */
@@ -788,8 +734,8 @@ public class MainActivity extends AppCompatActivity {
         return b;
     }
 
-    private boolean applyMarkToWorkbook(float value) {
-        if (model == null || workbook == null || isOverviewPage()) return false;
+    private void applyMarkToWorkbook(float value) {
+        if (model == null || workbook == null || isOverviewPage()) return;
         Student s = model.students.get(studentIdx);
         Criterion c = model.criteria.get(pageIdx - 1);
         boolean written = XlsxParser.writeMark(workbook, s, c, value);
@@ -805,7 +751,6 @@ public class MainActivity extends AppCompatActivity {
         } else {
             Toast.makeText(this, "Cell not writable (not a mark cell)", Toast.LENGTH_SHORT).show();
         }
-        return written;
     }
 
     private void updateDirtyUi() {
