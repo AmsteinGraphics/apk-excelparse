@@ -13,7 +13,7 @@
  * The saved .xlsx still carries Excel's real formulas, so Excel recomputes them on open.
  */
 
-// Build marker: step 3 — group filter + completion.
+// Build marker: header-row fix (distinct-id scoring).
 const EVALUATION_SHEET = 'evaluation';
 const CRITERIA_SHEET = 'criteres_reviewed';
 const MARK_VALUES = [0, 0.25, 0.5, 0.75, 1];
@@ -139,7 +139,9 @@ function parseModel(wb, evalWs) {
             });
         });
     }
-    // Header row = the row with the most cells whose text is a known criterion id.
+    // Header row = the row matching the most DISTINCT criterion ids (one per column). Scoring by
+    // distinct ids (not raw matches) is essential: the coefficient row and "sur 6" sums are small
+    // integers that collide with the id space (1..61), so a raw count would wrongly pick row 4.
     let headerRow = -1, headerMap = null, headerHits = 0;
     evalWs.eachRow((row, rowNumber) => {
         const map = new Map();
@@ -147,7 +149,8 @@ function parseModel(wb, evalWs) {
             const t = cellText(cell.value).trim();
             if (metaById.has(t)) map.set(colNumber, t);
         });
-        if (map.size > headerHits) { headerHits = map.size; headerMap = map; headerRow = rowNumber; }
+        const distinct = new Set(map.values()).size;
+        if (distinct > headerHits) { headerHits = distinct; headerMap = map; headerRow = rowNumber; }
     });
     if (!headerMap || headerMap.size === 0) throw new Error('Ligne des critères introuvable.');
 
