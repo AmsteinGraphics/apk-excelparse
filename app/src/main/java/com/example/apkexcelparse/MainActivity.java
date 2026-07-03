@@ -128,6 +128,11 @@ public class MainActivity extends AppCompatActivity {
     // When the OVERVIEW button jumps to the overview page it stashes the criterion page to
     // return to here (>= 1). -1 = no pending return, so the button shows "OVERVIEW".
     private int overviewReturnPage = -1;
+    // When a Complétude subpage opens a student's overview, this remembers which subpage to return
+    // to so the GENERAL button reads RETOUR and goes back to that list. 0 = none, 1 = partial, 2 = unmarked.
+    private int overviewReturnSubpage = 0;
+    private static final int SUBPAGE_PARTIAL = 1;
+    private static final int SUBPAGE_UNMARKED = 2;
     private boolean dirty;
 
     // Per-group visibility filter. groupHidden[i] hides model.groups.get(i) everywhere in the app;
@@ -185,6 +190,8 @@ public class MainActivity extends AppCompatActivity {
         findViewById(R.id.filterBackButton).setOnClickListener(v -> closeFilterScreen());
         findViewById(R.id.completionBackButton).setOnClickListener(v -> showGrading());
         findViewById(R.id.subpageBackButton).setOnClickListener(v -> showCompletionScreen());
+        findViewById(R.id.selectAllGroupsButton).setOnClickListener(v -> setAllGroupsHidden(false));
+        findViewById(R.id.clearAllGroupsButton).setOnClickListener(v -> setAllGroupsHidden(true));
 
         findViewById(R.id.pickButton).setOnClickListener(v -> launchPicker());
         findViewById(R.id.pickerCheckUpdatesButton).setOnClickListener(v -> checkForUpdates());
@@ -390,25 +397,49 @@ public class MainActivity extends AppCompatActivity {
         return '#';
     }
 
-    /** Jump to the first criterion page of the previous/next *visible* group (clamped). */
+    /**
+     * Jump to the previous/next *visible* group. At the ends of the group sequence this rolls over
+     * into the neighbouring student (roster wraps): ‹ groupe on the first group → previous student's
+     * last group; groupe › on the last group → next student's first group.
+     */
     private void navigateGroup(int delta) {
         if (model == null || model.groups.isEmpty()) return;
         List<Integer> visible = visibleGroupIndices();
         if (visible.isEmpty()) return;
-        // Landing on a criterion page abandons any stashed "return to criterion" from OVERVIEW.
+        // Landing on a criterion page abandons any stashed OVERVIEW / subpage return.
         overviewReturnPage = -1;
+        overviewReturnSubpage = 0;
         int curGroupIdx = isOverviewPage() ? -1 : indexOfGroupForCriterion(pageIdx - 1);
-        // Position of the current group within the visible list (-1 when on the overview).
         int pos = visible.indexOf(curGroupIdx);
-        int target;
         if (pos < 0) {
-            target = delta >= 0 ? 0 : visible.size() - 1;
-        } else {
-            target = pos + delta;
-            if (target < 0) target = 0;
-            if (target >= visible.size()) target = visible.size() - 1;
+            // From the overview: first (›) or last (‹) visible group of the same student.
+            int gi = delta >= 0 ? visible.get(0) : visible.get(visible.size() - 1);
+            pageIdx = model.groups.get(gi).firstCriterionIndex + 1;
+            render();
+            return;
         }
-        pageIdx = model.groups.get(visible.get(target)).firstCriterionIndex + 1;
+        int target = pos + delta;
+        if (target < 0) {
+            goToNeighbourStudentGroup(-1, true);        // previous student, its last group
+        } else if (target >= visible.size()) {
+            goToNeighbourStudentGroup(1, false);        // next student, its first group
+        } else {
+            pageIdx = model.groups.get(visible.get(target)).firstCriterionIndex + 1;
+            render();
+        }
+    }
+
+    /** Move to an adjacent student (roster wraps) and land on their first/last visible group. */
+    private void goToNeighbourStudentGroup(int studentDelta, boolean landOnLastGroup) {
+        int size = model.students.size();
+        studentIdx = ((studentIdx + studentDelta) % size + size) % size;
+        List<Integer> visible = visibleGroupIndices();
+        if (visible.isEmpty()) {
+            pageIdx = 0;
+        } else {
+            int gi = landOnLastGroup ? visible.get(visible.size() - 1) : visible.get(0);
+            pageIdx = model.groups.get(gi).firstCriterionIndex + 1;
+        }
         render();
     }
 
@@ -416,6 +447,7 @@ public class MainActivity extends AppCompatActivity {
     private void jumpToGroup(int firstCriterionIndex) {
         if (model == null) return;
         overviewReturnPage = -1; // deliberate jump to a criterion; abandon any GENERAL stash
+        overviewReturnSubpage = 0;
         pageIdx = firstCriterionIndex + 1;
         render();
     }
@@ -436,7 +468,13 @@ public class MainActivity extends AppCompatActivity {
      */
     private void toggleOverview() {
         if (model == null) return;
-        if (overviewReturnPage >= 0) {
+        if (overviewReturnSubpage > 0) {
+            // Reached this overview from a Complétude subpage: RETOUR goes back to that list.
+            int kind = overviewReturnSubpage;
+            overviewReturnSubpage = 0;
+            if (kind == SUBPAGE_PARTIAL) showPartialSubpage();
+            else showUnmarkedSubpage();
+        } else if (overviewReturnPage >= 0) {
             pageIdx = overviewReturnPage;
             overviewReturnPage = -1;
             render();
@@ -450,8 +488,8 @@ public class MainActivity extends AppCompatActivity {
 
     private void updateOverviewButton() {
         if (overviewButton == null) return;
-        overviewButton.setText(overviewReturnPage >= 0
-                ? R.string.overview_back : R.string.overview_button);
+        boolean back = overviewReturnPage >= 0 || overviewReturnSubpage > 0;
+        overviewButton.setText(back ? R.string.overview_back : R.string.overview_button);
     }
 
     private boolean isOverviewPage() {
@@ -736,6 +774,7 @@ public class MainActivity extends AppCompatActivity {
     private void goToCriterion(int criterionIndex) {
         if (model == null || criterionIndex < 0 || criterionIndex >= model.criteria.size()) return;
         overviewReturnPage = -1; // a within-student criterion move, like the old « critère » buttons
+        overviewReturnSubpage = 0;
         pageIdx = criterionIndex + 1;
         render();
     }
@@ -1029,7 +1068,7 @@ public class MainActivity extends AppCompatActivity {
         setScreen(filterContainer);
     }
 
-    /** One checkbox per group; ticked = visible. Enforces at least one visible group. */
+    /** One checkbox per group; ticked = visible. All groups may be unticked (transient empty state). */
     private void buildFilterList() {
         filterList.removeAllViews();
         int pad = Math.round(dpToPx(8f));
@@ -1037,20 +1076,11 @@ public class MainActivity extends AppCompatActivity {
             final int gi = i;
             Group g = model.groups.get(i);
             CheckBox cb = new CheckBox(this);
-            String coef = coefDigit(g.coefficient);
-            String label = (g.name != null ? g.name : "(groupe)")
-                    + (coef != null ? "   ·   coeff. " + coef : "");
-            cb.setText(label);
+            cb.setText(g.name != null ? g.name : "(groupe)");
             cb.setTextSize(16f);
             cb.setPadding(pad, pad, pad, pad);
             cb.setChecked(!isGroupHiddenAt(gi));
             cb.setOnCheckedChangeListener((btn, checked) -> {
-                if (!checked && wouldHideAllGroups(gi)) {
-                    btn.setChecked(true); // keep at least one group visible
-                    Toast.makeText(this, "au moins un groupe doit rester visible",
-                            Toast.LENGTH_SHORT).show();
-                    return;
-                }
                 groupHidden[gi] = !checked;
                 saveFilterState();
             });
@@ -1058,12 +1088,12 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    private boolean wouldHideAllGroups(int toHide) {
-        for (int i = 0; i < groupHidden.length; i++) {
-            boolean hidden = i == toHide || groupHidden[i];
-            if (!hidden) return false;
-        }
-        return true;
+    /** "SÉLECTIONNER TOUT" / "EFFACER SÉLECTION": tick or untick every group at once. */
+    private void setAllGroupsHidden(boolean hidden) {
+        if (groupHidden == null) return;
+        java.util.Arrays.fill(groupHidden, hidden);
+        saveFilterState();
+        buildFilterList(); // refresh checkbox states
     }
 
     private void closeFilterScreen() {
@@ -1177,7 +1207,7 @@ public class MainActivity extends AppCompatActivity {
             int si = cc.partialStudents.get(k);
             String label = model.students.get(si).name + "   —   "
                     + String.format(Locale.getDefault(), "%.1f", cc.partialPercents.get(k)) + "%";
-            subpageContent.addView(studentLinkRow(label, si));
+            subpageContent.addView(studentLinkRow(label, si, SUBPAGE_PARTIAL));
         }
         setScreen(subpageContainer);
     }
@@ -1188,17 +1218,22 @@ public class MainActivity extends AppCompatActivity {
         subpageContent.removeAllViews();
         if (cc.unmarkedStudents.isEmpty()) subpageContent.addView(emptyNote("(aucun)"));
         for (int si : cc.unmarkedStudents) {
-            subpageContent.addView(studentLinkRow(model.students.get(si).name, si));
+            subpageContent.addView(studentLinkRow(model.students.get(si).name, si, SUBPAGE_UNMARKED));
         }
         setScreen(subpageContainer);
     }
 
-    /** Jump to a student's GENERAL (overview) page from a completion subpage link. */
-    private void openStudentOverview(int studentIndex) {
+    /**
+     * Jump to a student's GENERAL (overview) page from a completion subpage link. Remembers the
+     * subpage so the GENERAL button reads RETOUR and returns to that list (like arriving from a
+     * criterion page).
+     */
+    private void openStudentOverview(int studentIndex, int subpageKind) {
         if (model == null || studentIndex < 0 || studentIndex >= model.students.size()) return;
         studentIdx = studentIndex;
         pageIdx = 0;
         overviewReturnPage = -1;
+        overviewReturnSubpage = subpageKind;
         showGrading();
         render();
     }
@@ -1245,7 +1280,7 @@ public class MainActivity extends AppCompatActivity {
         return row;
     }
 
-    private TextView studentLinkRow(String text, int studentIndex) {
+    private TextView studentLinkRow(String text, int studentIndex, int subpageKind) {
         TextView tv = new TextView(this);
         tv.setText(text);
         tv.setTextSize(16f);
@@ -1254,7 +1289,7 @@ public class MainActivity extends AppCompatActivity {
         int pad = Math.round(dpToPx(10f));
         tv.setPadding(0, pad, 0, pad);
         tv.setClickable(true);
-        tv.setOnClickListener(v -> openStudentOverview(studentIndex));
+        tv.setOnClickListener(v -> openStudentOverview(studentIndex, subpageKind));
         return tv;
     }
 

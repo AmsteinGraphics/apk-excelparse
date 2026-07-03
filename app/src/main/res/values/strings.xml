@@ -1,8 +1,8 @@
 <resources>
     <string name="app_name">LAPIS Mark</string>
     <string name="pick_file">Pick xlsx file</string>
-    <string name="change_file">Change file…</string>
-    <string name="check_updates">Check for updates</string>
+    <string name="change_file">Changer .xlsx…</string>
+    <string name="check_updates">Mise à jour</string>
     <string name="no_file_loaded">No workbook loaded yet. Pick an xlsx file to start grading.</string>
     <string name="prev_student">« étudiant</string>
     <string name="prev_letter">« lettre</string>
@@ -11,12 +11,14 @@
     <string name="next_group">groupe ›</string>
     <string name="next_student">étudiant »</string>
     <string name="overview_button">GENERAL</string>
-    <string name="overview_back">BACK</string>
+    <string name="overview_back">RETOUR</string>
     <string name="loading">Loading…</string>
     <string name="saving">Saving…</string>
     <string name="save_and_share">Save &amp; share</string>
-    <string name="filter_groups">filtrer les groupes</string>
+    <string name="filter_groups">Filtre de groupes</string>
     <string name="filter_title">groupes évalués</string>
-    <string name="completion">complétude</string>
-    <string name="back">BACK</string>
+    <string name="completion">Complétude</string>
+    <string name="back">RETOUR</string>
+    <string name="select_all_groups">SÉLECTIONNER TOUT</string>
+    <string name="clear_all_groups">EFFACER SÉLECTION</string>
 </resources>
