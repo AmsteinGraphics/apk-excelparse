@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>LAPIS Mark (web)</title>
+    <meta name="theme-color" content="#A70E13" />
+    <!-- iOS: allow "Add to Home Screen" to launch full-screen like an app. -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="LAPIS Mark" />
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+    <header>
+        <h1>LAPIS&nbsp;Mark <span class="tag">web · skeleton</span></h1>
+        <p class="sub">Preuve de concept — ouvre un fichier <code>.xlsx</code> et lit sa structure dans le navigateur.</p>
+    </header>
+
+    <main>
+        <section class="picker">
+            <label for="file" class="pick-button">Ouvrir un fichier .xlsx…</label>
+            <input id="file" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" />
+            <p id="status" class="status"></p>
+        </section>
+
+        <section id="summary" class="summary" hidden>
+            <div class="stat"><span id="statStudents" class="num">0</span><span class="lbl">étudiants</span></div>
+            <div class="stat"><span id="statCriteria" class="num">0</span><span class="lbl">colonnes de notes détectées</span></div>
+        </section>
+
+        <section id="studentsSection" hidden>
+            <h2>Étudiants</h2>
+            <ol id="studentList" class="student-list"></ol>
+        </section>
+    </main>
+
+    <footer>
+        <p>Cette page ne modifie aucun fichier. Elle valide seulement la lecture de l'.xlsx
+           (y compris les couleurs de cellules) côté navigateur.</p>
+    </footer>
+
+    <script src="vendor/exceljs.min.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>

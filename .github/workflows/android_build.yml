@@ -4,6 +4,11 @@ on:
   push:
     branches:
       - '**'
+    # Skip the APK build for changes that are only the web app or its workflow — keeps the
+    # two sides independent. Any Android/gradle/CLAUDE.md change still triggers a build.
+    paths-ignore:
+      - 'web/**'
+      - '.github/workflows/web_build.yml'
 
 permissions:
   contents: write

@@ -10,7 +10,7 @@ Personal Android grading app for a Swiss teacher. Reads student rows and per-cri
 
 - **Cells are identified by fill color, not by fixed ranges.** Merged cells and group-average columns in the workbook mean row/column indices aren't stable. The parser scans for two colors on the `evaluation` sheet:
   - Criterion label cells (POI-resolved RGB `#E6E9EB`, ±4 tolerance). Excel *displays* these as pale blue `#DAE9F8`; POI's HSL-based tint math on the Accent-1 theme color resolves to that near-neutral. Trust POI's number, not Excel's swatch. Always call `getRGBWithTint()` first for fills — theme+tint fills return null from `getRGB()`/`getARGB()`.
-  - Mark cells (light gray `#D9D9D9`, direct RGB, ±4 tolerance). Writes only ever land in these.
+  - Mark cells (light gray `#D9D9D9`, ±4 tolerance). POI resolves them to that RGB via `getRGBWithTint()`. **Note (found during the web port):** in the reference workbook these are *not* a plain RGB fill — they're a **theme fill (theme 0, tint −0.15)** that resolves to `#D9D9D9`. POI's `getRGBWithTint()`-first order handles it transparently; a non-POI reader (e.g. ExcelJS in `web/`) must match the theme+tint signature, not a literal RGB. Writes only ever land in these.
 - **Student rows** live below the criterion header row. Filter requires column A to be **numeric** (student number) — otherwise the "coefficient du critère" label row above the students gets misidentified as a student.
 - **Criterion metadata** lives on sheet `criteres_reviewed`: columns B (group), C (coefficient), D (criterion id — join key), E (contract text), F (remarks). Group name is written once per group in Excel — the parser must **fill-down** the last non-empty value across subsequent rows, otherwise criteria 17..N in the same group show blank group labels.
 - **Formula cells storing criterion IDs** cache their numeric result. Reading via `getNumericCellValue()` and `String.valueOf` gives `"1.0"`, which breaks the join against the metadata sheet's numeric `"1"`. The parser respects `getCachedFormulaResultType()` and normalises integer results to `String.valueOf((long) d)`.
@@ -103,6 +103,15 @@ The FileProvider authority is `${applicationId}.fileprovider` with paths declare
 - **App name is "LAPIS Mark"** (`app_name` in `strings.xml`), used as the launcher label and in-app title.
 - **Launcher icon is an adaptive icon only** — since `minSdk 26` every device uses `mipmap-anydpi-v26/ic_launcher.xml` (+ `_round`), so there are **no PNG density fallbacks** and none are needed. Layers: `<background>` = `@color/ic_launcher_background` (`#A70E13`, brand red, full-bleed), `<foreground>` = `@drawable/ic_launcher_foreground`, `<monochrome>` = same foreground (Android 13+ themed icons).
 - **The foreground is a hand-converted vector** from `lapis_mark_icon_v1.00.svg` (kept in repo root as the design source). The white paths are copied verbatim (viewport 306.14) but **wrapped in a `<group>` scaled 0.85 about the centre (`pivot 153.07`)**. This is deliberate: the source is a full-bleed square with the LAPIS/MARK wordmarks near the top/bottom edges, which a **circular launcher mask (e.g. GrapheneOS) would clip** at 1:1. 0.85 pulls the artwork inside the ~66dp safe circle so nothing is cropped on circles, with a clean red margin on square/squircle launchers. If the SVG is updated, re-copy the `d` attributes into `pathData` and re-check that scale against the safe zone.
+
+## Web version (`web/`) — for iOS colleagues
+
+A parallel **browser** version lives in `web/`, so the app can run on iPhones (and anything) via Safari — no App Store. It is **fully independent** of the Android app: separate folder, no shared build, and **path-scoped CI** (`android_build.yml` has `paths-ignore: web/**`; `web_build.yml` runs only on `web/**`) so the two never trigger each other. The Android APK release flow is untouched.
+
+- Static site (no build step): `index.html` + `app.js` + `styles.css` + `manifest.webmanifest`, with **ExcelJS vendored** at `web/vendor/exceljs.min.js` (self-contained, no runtime CDN).
+- Deployed to **GitHub Pages** by `.github/workflows/web_build.yml` (auto-enables Pages via `configure-pages` `enablement: true`). URL: `https://amsteingraphics.github.io/apk-excelparse/`.
+- **Status: skeleton** — opens an `.xlsx`, detects mark columns + lists students, never writes. Proves the crux works in a browser: **reading theme+tint fills** (ExcelJS gives `{theme, tint}`, matched as the mark-cell signature — see the mark-cell note above). Port roadmap is in `web/README.md`.
+- Key porting constraint vs. Android: no Apache POI (Java-only). ExcelJS reads fills and writes files, but does **not** resolve theme colours to RGB — match `{theme, tint}` signatures directly instead of resolved RGB.
 
 ## Working with the user
 

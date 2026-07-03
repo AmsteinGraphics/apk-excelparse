@@ -1,0 +1,11 @@
+{
+  "name": "LAPIS Mark (web)",
+  "short_name": "LAPIS Mark",
+  "description": "Notation d'étudiants à partir d'un fichier .xlsx — version web.",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#A70E13",
+  "theme_color": "#A70E13"
+}
