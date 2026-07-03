@@ -755,3 +755,9 @@ function setStatus(text, isError) {
     statusEl.textContent = text;
     statusEl.classList.toggle('error', !!isError);
 }
+
+// Best-effort portrait lock. Works on Android installed/fullscreen PWAs; iOS ignores it, where
+// the CSS #rotate-notice covers landscape instead. manifest.webmanifest also requests portrait.
+if (screen.orientation && screen.orientation.lock) {
+    try { screen.orientation.lock('portrait').catch(() => {}); } catch (e) { /* unsupported */ }
+}

@@ -13,6 +13,19 @@
 /* Author display rules below (flex/inline) would otherwise beat the UA [hidden] rule. */
 [hidden] { display: none !important; }
 
+/* Portrait only. On a phone-sized screen in landscape, cover the app with a rotate prompt.
+   Scoped by max-height so desktops/laptops (tall landscape windows) are unaffected. */
+#rotate-notice { display: none; }
+@media (orientation: landscape) and (max-height: 500px) {
+    #rotate-notice {
+        display: flex; position: fixed; inset: 0; z-index: 100;
+        flex-direction: column; align-items: center; justify-content: center; gap: 12px;
+        background: var(--brand); color: #fff; text-align: center; padding: 24px;
+    }
+    #rotate-notice .rotate-icon { font-size: 48px; }
+    #rotate-notice p { font-size: 18px; font-weight: 600; margin: 0; }
+}
+
 html, body {
     margin: 0; padding: 0; height: 100%;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
