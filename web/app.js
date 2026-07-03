@@ -13,7 +13,7 @@
  * The saved .xlsx still carries Excel's real formulas, so Excel recomputes them on open.
  */
 
-// Build marker: step 2 + shared-formula save fix.
+// Build marker: step 3 — group filter + completion.
 const EVALUATION_SHEET = 'evaluation';
 const CRITERIA_SHEET = 'criteres_reviewed';
 const MARK_VALUES = [0, 0.25, 0.5, 0.75, 1];
