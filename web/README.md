@@ -62,6 +62,6 @@ then re-run the workflow.
 1. ✅ Marking one student's criteria + Save = download the graded `.xlsx`.
 2. ✅ Overview page — general + per-group averages (`CK`→`CL` math, **computed in JS**
    since ExcelJS has no formula engine) and canvas dot rows; GÉNÉRAL/CRITÈRES toggle.
-3. Group filter + completion.
+3. ✅ Group filter (⋮ menu, per-workbook via `localStorage`) + Completion page with subpages.
 4. Notes (the `notes` sheet).
 5. PWA offline (service worker) + home-screen icon.

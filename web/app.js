@@ -29,6 +29,10 @@ const groupName = el('groupName'), groupCoef = el('groupCoef');
 const contractEl = el('contract'), remarksEl = el('remarks');
 const overviewTable = el('overviewTable'), marksEl = el('marks');
 const overviewBtn = el('overviewBtn'), critNav = el('critNav');
+const menuBtn = el('menuBtn'), menuEl = el('menu');
+const filterScreen = el('filter'), completionScreen = el('completion'), subpageScreen = el('subpage');
+const filterList = el('filterList'), completionContent = el('completionContent');
+const subpageTitle = el('subpageTitle'), subpageContent = el('subpageContent');
 
 let workbook = null, ws = null, model = null;
 let studentIdx = 0;
@@ -36,6 +40,7 @@ let pageIdx = 0;              // 0 = overview, 1..N = criterion (critIdx = pageI
 let overviewReturnCrit = 0;  // criterion to return to from the overview
 let dirty = false, sourceName = 'workbook.xlsx';
 let dotJump = null;          // when set on a criterion page: (slotIndex) => jump
+let groupHidden = [];        // groupHidden[i] hides model.groups[i] everywhere; per-workbook persisted
 
 // ---- Wiring ----
 fileInput.addEventListener('change', onFilePicked);
@@ -58,6 +63,22 @@ dotRow.addEventListener('click', (e) => {
 });
 window.addEventListener('resize', () => { if (model) render(); });
 
+// Menu + overlays
+menuBtn.addEventListener('click', (e) => { e.stopPropagation(); menuEl.hidden = !menuEl.hidden; });
+document.addEventListener('click', () => { menuEl.hidden = true; });
+menuEl.addEventListener('click', (e) => {
+    const b = e.target.closest('button'); if (!b) return;
+    const act = b.getAttribute('data-act');
+    if (act === 'filter') showFilter();
+    else if (act === 'completion') showCompletion();
+    else if (act === 'change') changeFile();
+});
+el('filterBack').addEventListener('click', closeFilter);
+el('completionBack').addEventListener('click', () => showScreen('grading'));
+el('subpageBack').addEventListener('click', showCompletion);
+el('selectAll').addEventListener('click', () => setAllGroupsHidden(false));
+el('clearAll').addEventListener('click', () => setAllGroupsHidden(true));
+
 // ---- Load ----
 async function onFilePicked(e) {
     const file = e.target.files && e.target.files[0];
@@ -73,7 +94,8 @@ async function onFilePicked(e) {
         model = parseModel(workbook, ws);
         if (!model.students.length || !model.criteria.length) throw new Error('Aucun étudiant ou critère détecté.');
         studentIdx = 0; pageIdx = 0; overviewReturnCrit = 0; dirty = false;
-        pickerScreen.hidden = true; gradingScreen.hidden = false;
+        loadFilter();
+        showScreen('grading');
         render();
     } catch (err) {
         console.error(err);
@@ -179,7 +201,8 @@ function groupGrade(student, group) {
 
 function generalAverage(student) {
     let sw = 0, w = 0;
-    for (const g of model.groups) {
+    for (const gi of visibleGroupIdx()) {
+        const g = model.groups[gi];
         const { grade } = groupGrade(student, g);
         if (grade == null || g.coef == null) continue;
         sw += grade * g.coef; w += g.coef;
@@ -266,9 +289,12 @@ function drawDots(canvas, dots, opts) {
 
 // ---- Navigation ----
 function moveCrit(delta) {
-    const n = model.criteria.length;
-    let ci = ((pageIdx - 1 + delta) % n + n) % n;
-    pageIdx = ci + 1;
+    const vis = visibleCriteria();
+    if (!vis.length) return;
+    let pos = vis.indexOf(pageIdx - 1);
+    if (pos < 0) pos = delta >= 0 ? 0 : vis.length - 1;
+    else pos = ((pos + delta) % vis.length + vis.length) % vis.length;
+    pageIdx = vis[pos] + 1;
     render();
 }
 function moveStudent(delta) {
@@ -277,8 +303,14 @@ function moveStudent(delta) {
     render();
 }
 function toggleOverview() {
-    if (pageIdx === 0) { pageIdx = overviewReturnCrit + 1; }
-    else { overviewReturnCrit = pageIdx - 1; pageIdx = 0; }
+    if (pageIdx === 0) {
+        let ci = overviewReturnCrit;
+        if (!isCriterionVisible(ci)) { const vis = visibleCriteria(); ci = vis.length ? vis[0] : 0; }
+        pageIdx = ci + 1;
+    } else {
+        overviewReturnCrit = pageIdx - 1;
+        pageIdx = 0;
+    }
     render();
 }
 function jumpToCriterion(ci) { pageIdx = ci + 1; render(); }
@@ -313,13 +345,17 @@ function renderOverview(s) {
     averageEl.textContent = avg == null ? '' : avg.toFixed(2);
     averageEl.style.color = avgColor(avg);
     dotJump = null;
-    // All criteria dots, small, non-interactive.
-    const dots = model.criteria.map((c) => ({ bucket: bucketOf(markValue(s, c)), coef: c.coef, id: c.id }));
+    // Visible criteria dots, small, non-interactive.
+    const dots = visibleCriteria().map((i) => {
+        const c = model.criteria[i];
+        return { bucket: bucketOf(markValue(s, c)), coef: c.coef, id: c.id };
+    });
     requestAnimationFrame(() => drawDots(dotRow, dots, { height: 26, step: 0.25 }));
 
-    // Per-group table.
+    // Per-group table (visible groups only).
     overviewTable.innerHTML = '';
-    for (const g of model.groups) {
+    for (const gi of visibleGroupIdx()) {
+        const g = model.groups[gi];
         const { grade, complete } = groupGrade(s, g);
         const row = document.createElement('div');
         row.className = 'grp-row';
@@ -395,6 +431,152 @@ function renderCriterion(s) {
 }
 
 function setDirty() { dirty = true; dirtyEl.hidden = false; }
+
+// ---- Screens ----
+function showScreen(name) {
+    pickerScreen.hidden = name !== 'picker';
+    gradingScreen.hidden = name !== 'grading';
+    filterScreen.hidden = name !== 'filter';
+    completionScreen.hidden = name !== 'completion';
+    subpageScreen.hidden = name !== 'subpage';
+    menuEl.hidden = true;
+}
+function changeFile() { fileInput.value = ''; fileInput.click(); }
+
+// ---- Group filter ----
+function groupIndexOfCriterion(ci) {
+    for (let i = 0; i < model.groups.length; i++) {
+        const g = model.groups[i];
+        if (ci >= g.first && ci <= g.last) return i;
+    }
+    return -1;
+}
+function isCriterionVisible(ci) { const gi = groupIndexOfCriterion(ci); return gi < 0 || !groupHidden[gi]; }
+function visibleGroupIdx() { const r = []; model.groups.forEach((g, i) => { if (!groupHidden[i]) r.push(i); }); return r; }
+function visibleCriteria() { const r = []; model.criteria.forEach((c, i) => { if (isCriterionVisible(i)) r.push(i); }); return r; }
+
+function filterKey() { return 'lapis-filter::' + sourceName; }
+function loadFilter() {
+    groupHidden = new Array(model.groups.length).fill(false);
+    try {
+        const raw = localStorage.getItem(filterKey());
+        if (raw) {
+            const names = JSON.parse(raw);
+            model.groups.forEach((g, i) => { if (names.includes(g.name)) groupHidden[i] = true; });
+        }
+    } catch (e) { /* ignore */ }
+    if (groupHidden.length && groupHidden.every(Boolean)) groupHidden.fill(false); // never all hidden
+}
+function saveFilter() {
+    try {
+        const names = model.groups.filter((g, i) => groupHidden[i]).map((g) => g.name);
+        localStorage.setItem(filterKey(), JSON.stringify(names));
+    } catch (e) { /* ignore */ }
+}
+function showFilter() { buildFilter(); showScreen('filter'); }
+function buildFilter() {
+    filterList.innerHTML = '';
+    model.groups.forEach((g, i) => {
+        const label = document.createElement('label');
+        label.className = 'filter-item';
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.checked = !groupHidden[i];
+        cb.addEventListener('change', () => { groupHidden[i] = !cb.checked; saveFilter(); });
+        const span = document.createElement('span');
+        span.textContent = g.name || '(groupe)';
+        label.appendChild(cb);
+        label.appendChild(span);
+        filterList.appendChild(label);
+    });
+}
+function setAllGroupsHidden(hidden) { groupHidden.fill(hidden); saveFilter(); buildFilter(); }
+function closeFilter() {
+    if (pageIdx !== 0 && !isCriterionVisible(pageIdx - 1)) pageIdx = 0; // fell into a hidden group
+    showScreen('grading');
+    render();
+}
+
+// ---- Completion ----
+function computeCompletion() {
+    const vg = visibleGroupIdx(), vc = visibleCriteria();
+    const nStu = model.students.length, nVC = vc.length;
+    const cc = {
+        markedCriteria: 0, totalCriteria: nStu * nVC,
+        markedGroups: 0, partialGroups: 0, unmarkedGroups: 0, totalGroups: nStu * vg.length,
+        totalStudents: nStu, marked: [], partial: [], partialPct: [], unmarked: [],
+    };
+    for (let si = 0; si < nStu; si++) {
+        const s = model.students[si];
+        let sm = 0;
+        for (const gi of vg) {
+            const g = model.groups[gi], sz = g.last - g.first + 1;
+            let gm = 0;
+            for (let k = g.first; k <= g.last; k++) if (markValue(s, model.criteria[k]) != null) gm++;
+            if (gm === sz) cc.markedGroups++; else if (gm > 0) cc.partialGroups++; else cc.unmarkedGroups++;
+            sm += gm;
+        }
+        cc.markedCriteria += sm;
+        if (nVC > 0 && sm === nVC) cc.marked.push(si);
+        else if (sm > 0) { cc.partial.push(si); cc.partialPct.push(100 * sm / nVC); }
+        else cc.unmarked.push(si);
+    }
+    return cc;
+}
+function showCompletion() { buildCompletion(); showScreen('completion'); }
+function buildCompletion() {
+    const cc = computeCompletion();
+    completionContent.innerHTML = '';
+    const add = (n) => completionContent.appendChild(n);
+    add(compSection('totaux'));
+    add(compRow('étudiants notés', cc.marked.length, cc.totalStudents, () => showSubpage('marked')));
+    add(compRow('critères notés', cc.markedCriteria, cc.totalCriteria, null));
+    add(compRow('groupes notés', cc.markedGroups, cc.totalGroups, null));
+    add(compSection('notation partielle'));
+    add(compRow('étudiants partiellement notés', cc.partial.length, cc.totalStudents, () => showSubpage('partial')));
+    add(compRow('groupes partiellement notés', cc.partialGroups, cc.totalGroups, null));
+    add(compSection('non noté'));
+    add(compRow('étudiants non notés', cc.unmarked.length, cc.totalStudents, () => showSubpage('unmarked')));
+    add(compRow('groupes non notés', cc.unmarkedGroups, cc.totalGroups, null));
+}
+function compSection(t) { const d = document.createElement('div'); d.className = 'comp-section'; d.textContent = t; return d; }
+function compRow(label, count, total, onClick) {
+    const row = document.createElement('div');
+    row.className = 'comp-row';
+    const l = document.createElement('span');
+    l.className = 'comp-label' + (onClick ? ' link' : '');
+    l.textContent = label;
+    if (onClick) l.addEventListener('click', onClick);
+    row.appendChild(l);
+    const pct = total > 0 ? (100 * count / total) : 0;
+    const v = document.createElement('span');
+    v.className = 'comp-value';
+    v.textContent = count + '/' + total + '   ' + pct.toFixed(1) + '%';
+    row.appendChild(v);
+    return row;
+}
+function showSubpage(kind) {
+    const cc = computeCompletion();
+    let list, title, pct = null;
+    if (kind === 'marked') { list = cc.marked; title = 'étudiants notés'; }
+    else if (kind === 'partial') { list = cc.partial; title = 'étudiants partiellement notés'; pct = cc.partialPct; }
+    else { list = cc.unmarked; title = 'étudiants non notés'; }
+    subpageTitle.textContent = title;
+    subpageContent.innerHTML = '';
+    if (!list.length) {
+        const e = document.createElement('div'); e.className = 'sub-empty'; e.textContent = '(aucun)';
+        subpageContent.appendChild(e);
+    }
+    list.forEach((si, k) => {
+        const a = document.createElement('div');
+        a.className = 'sub-item';
+        a.textContent = model.students[si].name + (pct ? ('   —   ' + pct[k].toFixed(1) + '%') : '');
+        a.addEventListener('click', () => openStudentOverview(si));
+        subpageContent.appendChild(a);
+    });
+    showScreen('subpage');
+}
+function openStudentOverview(si) { studentIdx = si; pageIdx = 0; showScreen('grading'); render(); }
 
 // ---- Save ----
 /*

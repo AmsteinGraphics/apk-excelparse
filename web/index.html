@@ -31,6 +31,7 @@
             <span id="studentCounter" class="counter"></span>
             <span id="dirty" class="dirty" hidden>•&nbsp;modifié</span>
             <button id="saveBtn" class="btn-outline">SAUVER</button>
+            <button id="menuBtn" class="btn-outline icon">⋮</button>
         </div>
 
         <div class="scroll">
@@ -77,6 +78,39 @@
                 <button id="nextStudent" class="btn-outline">étudiant »</button>
             </div>
         </div>
+    </section>
+
+    <!-- Overflow menu -->
+    <div id="menu" class="menu" hidden>
+        <button data-act="filter">Filtre de groupes</button>
+        <button data-act="completion">Complétude</button>
+        <button data-act="change">Changer de fichier</button>
+    </div>
+
+    <!-- Group filter -->
+    <section id="filter" class="overlay" hidden>
+        <div class="overlay-head">groupes évalués</div>
+        <p class="overlay-sub">décochez les groupes que vous n'évaluez pas</p>
+        <div class="overlay-actions">
+            <button id="selectAll" class="btn-text">SÉLECTIONNER TOUT</button>
+            <button id="clearAll" class="btn-text">EFFACER SÉLECTION</button>
+        </div>
+        <div id="filterList" class="overlay-scroll"></div>
+        <button id="filterBack" class="btn-primary overlay-back">RETOUR</button>
+    </section>
+
+    <!-- Completion -->
+    <section id="completion" class="overlay" hidden>
+        <div class="overlay-head">Complétude</div>
+        <div id="completionContent" class="overlay-scroll"></div>
+        <button id="completionBack" class="btn-primary overlay-back">RETOUR</button>
+    </section>
+
+    <!-- Completion subpage (student lists) -->
+    <section id="subpage" class="overlay" hidden>
+        <div id="subpageTitle" class="overlay-head"></div>
+        <div id="subpageContent" class="overlay-scroll"></div>
+        <button id="subpageBack" class="btn-primary overlay-back">RETOUR</button>
     </section>
 
     <script src="vendor/exceljs.min.js"></script>
