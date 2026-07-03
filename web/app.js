@@ -396,12 +396,36 @@ function renderCriterion(s) {
 function setDirty() { dirty = true; dirtyEl.hidden = false; }
 
 // ---- Save ----
+/*
+ * ExcelJS can't write a workbook that uses *shared* formulas (one master cell + clones) — it
+ * throws "Shared Formula master must exist above and or left of clone". The reference workbook
+ * stores the per-student "sur 6"/CL grades that way. Rewriting every formula cell as a standalone
+ * (translated) formula removes the shared relationship while keeping the formula, so Excel still
+ * recalculates on open. Idempotent; safe to run before every save.
+ */
+function deshareFormulas(wb) {
+    wb.eachSheet((sheet) => {
+        sheet.eachRow({ includeEmpty: false }, (row) => {
+            row.eachCell({ includeEmpty: false }, (cell) => {
+                try {
+                    if (cell.type !== ExcelJS.ValueType.Formula) return;
+                    const cur = cell.value;
+                    const result = (cur && typeof cur === 'object' && 'result' in cur) ? cur.result : undefined;
+                    const formula = cell.formula; // ExcelJS translates shared clones to their own formula
+                    if (formula) cell.value = { formula, result };
+                } catch (e) { /* leave this cell as-is */ }
+            });
+        });
+    });
+}
+
 async function onSave() {
     if (!workbook) return;
     const btn = el('saveBtn');
     btn.disabled = true;
     dirtyEl.textContent = '• sauvegarde…'; dirtyEl.hidden = false;
     try {
+        deshareFormulas(workbook);
         const buffer = await workbook.xlsx.writeBuffer();
         const blob = new Blob([buffer], {
             type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
