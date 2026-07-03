@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>LAPIS Mark (web)</title>
     <meta name="theme-color" content="#A70E13" />
-    <!-- iOS: allow "Add to Home Screen" to launch full-screen like an app. -->
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="LAPIS Mark" />
@@ -13,37 +12,58 @@
     <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-    <header>
-        <h1>LAPIS&nbsp;Mark <span class="tag">web · skeleton</span></h1>
-        <p class="sub">Preuve de concept — ouvre un fichier <code>.xlsx</code> et lit sa structure dans le navigateur.</p>
-    </header>
-
     <noscript>
         <p style="padding:20px;color:#A70E13;">Cette page nécessite JavaScript pour lire les fichiers .xlsx.</p>
     </noscript>
 
-    <main>
-        <section class="picker">
-            <label for="file" class="pick-button">Ouvrir un fichier .xlsx…</label>
-            <input id="file" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" />
-            <p id="status" class="status"></p>
-        </section>
+    <!-- Picker -->
+    <section id="picker" class="picker-screen">
+        <div class="brand">LAPIS&nbsp;Mark <span class="tag">web</span></div>
+        <label for="file" class="pick-button">Ouvrir un fichier .xlsx…</label>
+        <input id="file" type="file"
+               accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" />
+        <p id="status" class="status"></p>
+    </section>
 
-        <section id="summary" class="summary" hidden>
-            <div class="stat"><span id="statStudents" class="num">0</span><span class="lbl">étudiants</span></div>
-            <div class="stat"><span id="statCriteria" class="num">0</span><span class="lbl">colonnes de notes détectées</span></div>
-        </section>
+    <!-- Grading -->
+    <section id="grading" class="grading-screen" hidden>
+        <div class="topbar">
+            <span id="studentCounter" class="counter"></span>
+            <span id="dirty" class="dirty" hidden>•&nbsp;modifié</span>
+            <button id="saveBtn" class="btn-outline">SAUVER</button>
+        </div>
 
-        <section id="studentsSection" hidden>
-            <h2>Étudiants</h2>
-            <ol id="studentList" class="student-list"></ol>
-        </section>
-    </main>
+        <div class="scroll">
+            <h1 id="studentName" class="student-name"></h1>
+            <p id="progress" class="progress"></p>
 
-    <footer>
-        <p>Cette page ne modifie aucun fichier. Elle valide seulement la lecture de l'.xlsx
-           (y compris les couleurs de cellules) côté navigateur.</p>
-    </footer>
+            <div class="rule"></div>
+
+            <div id="groupName" class="group-name"></div>
+            <div id="groupCoef" class="group-coef"></div>
+            <p id="contract" class="contract"></p>
+            <p id="remarks" class="remarks"></p>
+        </div>
+
+        <div class="controls">
+            <div class="marks" id="marks">
+                <button class="mark clear" data-idx="-1">×</button>
+                <button class="mark" data-idx="0">0</button>
+                <button class="mark" data-idx="1">¼</button>
+                <button class="mark" data-idx="2">½</button>
+                <button class="mark" data-idx="3">¾</button>
+                <button class="mark" data-idx="4">1</button>
+            </div>
+            <div class="nav">
+                <button id="prevCrit" class="btn-outline">‹ critère</button>
+                <button id="nextCrit" class="btn-outline">critère ›</button>
+            </div>
+            <div class="nav">
+                <button id="prevStudent" class="btn-outline">« étudiant</button>
+                <button id="nextStudent" class="btn-outline">étudiant »</button>
+            </div>
+        </div>
+    </section>
 
     <script src="vendor/exceljs.min.js"></script>
     <script src="app.js"></script>

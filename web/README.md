@@ -4,26 +4,33 @@ A browser version of the LAPIS Mark grading app, so it can run on **iOS** (and a
 device) via Safari/Chrome — no App Store. This folder is **fully independent** of the
 Android app in `../app/`; they share no build files and their CI never overlaps.
 
-## Status: skeleton / proof of concept
+## Status: marking loop (step 1 of the port)
 
-Right now this only proves the risky part works in a browser: **open an `.xlsx` and read
-its structure, including cell fill colours.** It:
+Opens an `.xlsx` with [ExcelJS](https://github.com/exceljs/exceljs) (vendored in
+`vendor/exceljs.min.js`, self-contained — no runtime CDN) and:
 
-- opens a picked `.xlsx` with [ExcelJS](https://github.com/exceljs/exceljs) (vendored in
-  `vendor/exceljs.min.js`, so the page is self-contained — no runtime CDN),
-- finds the `evaluation` sheet,
-- detects **mark columns** by the gray mark-cell fill — which is actually a **theme fill**
-  (theme 0, tint −0.15) that resolves to `#D9D9D9`, not a plain RGB (see below),
-- lists the **students** (column A numeric, column B name),
-- **never modifies the file.**
+- recovers the full model — **students**, **criteria** (id, column, group, coefficient,
+  contract, remarks), and **groups** — mirroring `XlsxParser.java`,
+- shows **one criterion at a time** with the student name, group + `coeff. N`, the contract
+  text, and a row of mark buttons (`× 0 ¼ ½ ¾ 1`),
+- writes marks into the workbook **in memory**,
+- navigates by criterion (`‹ critère / critère ›`) and student (`« étudiant / étudiant »`),
+  both wrapping,
+- **SAUVER** downloads a graded copy `<name>-graded.xlsx` (the original is never touched).
 
-Against the reference workbook this reports **159 students** and **65 mark columns**.
+Against the reference workbook the parser recovers **159 students** and **65 criteria**.
 
-It mirrors a simplified slice of the Android `XlsxParser.java`. The key thing this skeleton
-proves: **theme+tint fills can be read in the browser.** ExcelJS reports theme fills as
-`{theme, tint}` (not a resolved RGB), so `app.js` matches the mark cell by that signature —
-the browser equivalent of POI's `getRGBWithTint`. Criterion *label* cells (an Accent-1
-theme+tint fill) are detected the same way in the next step.
+### How the parsing works (validated against the reference workbook)
+
+- Criterion metadata comes from the **`criteres_reviewed`** sheet (col B group with fill-down,
+  C coefficient, D id, E contract, F remarks).
+- On **`evaluation`**, the header row carries each criterion id per column (a formula result);
+  `app.js` maps **column → id** by matching those against the known ids — robust and
+  independent of fill detection.
+- Mark cells sit at (student row, criterion column). They are a **theme fill** (theme 0,
+  tint −0.15 → `#D9D9D9`), *not* a plain RGB — the earlier skeleton proved ExcelJS can read
+  that via its `{theme, tint}` representation (the browser equivalent of POI's
+  `getRGBWithTint`).
 
 ## Run it locally
 
@@ -52,8 +59,8 @@ then re-run the workflow.
 
 ## Roadmap (port order)
 
-1. Marking one student's criteria (mark buttons writing back into the workbook in memory).
-2. Overview + group/general averages (`CK`→`CL` math).
+1. ✅ Marking one student's criteria + Save = download the graded `.xlsx`.
+2. Overview + group/general averages (`CK`→`CL` math), dots.
 3. Group filter + completion.
 4. Notes (the `notes` sheet).
-5. Save = download the graded `.xlsx`; optional PWA offline + home-screen icon.
+5. PWA offline (service worker) + home-screen icon.
