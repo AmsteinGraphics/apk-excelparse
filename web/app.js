@@ -13,7 +13,7 @@
  * The saved .xlsx still carries Excel's real formulas, so Excel recomputes them on open.
  */
 
-// Build marker: step 4 — notes.
+// Build marker: liste — full-roster page (⋮ menu) linking each student to their GENERAL page.
 const EVALUATION_SHEET = 'evaluation';
 const CRITERIA_SHEET = 'criteres_reviewed';
 const MARK_VALUES = [0, 0.25, 0.5, 0.75, 1];
@@ -50,6 +50,10 @@ let groupHidden = [];        // groupHidden[i] hides model.groups[i] everywhere;
 let notesList = [];          // [{si, ci}] pairs that have a note
 let notePos = 0;             // carousel cursor
 let noteReturnPos = -1;      // when a criterion page is reached via a note, the note to return to
+// When a subpage link opens a student's GENERAL page, this remembers which subpage to return to so
+// the GÉNÉRAL button reads RETOUR and goes back to that list. null = none. 'liste' = the roster.
+let overviewReturnSubpage = null;
+let subpageIsListe = false;  // routes the shared subpage BACK button (roster → grading, else → completion)
 
 // ---- Wiring ----
 fileInput.addEventListener('change', onFilePicked);
@@ -81,11 +85,12 @@ menuEl.addEventListener('click', (e) => {
     if (act === 'filter') showFilter();
     else if (act === 'completion') showCompletion();
     else if (act === 'notes') showNotes();
+    else if (act === 'liste') showListe();
     else if (act === 'change') changeFile();
 });
 el('filterBack').addEventListener('click', closeFilter);
 el('completionBack').addEventListener('click', () => showScreen('grading'));
-el('subpageBack').addEventListener('click', showCompletion);
+el('subpageBack').addEventListener('click', () => subpageIsListe ? showScreen('grading') : showCompletion());
 el('selectAll').addEventListener('click', () => setAllGroupsHidden(false));
 el('clearAll').addEventListener('click', () => setAllGroupsHidden(true));
 // Criterion-page note box: edit in place, saved into the workbook.
@@ -123,7 +128,7 @@ async function onFilePicked(e) {
         if (!ws) throw new Error("Feuille « " + EVALUATION_SHEET + " » introuvable.");
         model = parseModel(workbook, ws);
         if (!model.students.length || !model.criteria.length) throw new Error('Aucun étudiant ou critère détecté.');
-        studentIdx = 0; pageIdx = 0; overviewReturnCrit = 0; dirty = false;
+        studentIdx = 0; pageIdx = 0; overviewReturnCrit = 0; overviewReturnSubpage = null; dirty = false;
         loadFilter();
         showScreen('grading');
         render();
@@ -337,6 +342,7 @@ function moveCrit(delta) {
     else pos = ((pos + delta) % vis.length + vis.length) % vis.length;
     pageIdx = vis[pos] + 1;
     noteReturnPos = -1;
+    overviewReturnSubpage = null;
     render();
 }
 function moveStudent(delta) {
@@ -346,6 +352,13 @@ function moveStudent(delta) {
     render();
 }
 function toggleOverview() {
+    if (overviewReturnSubpage) {
+        // Reached this overview from a subpage link: RETOUR goes back to that list.
+        const kind = overviewReturnSubpage;
+        overviewReturnSubpage = null;
+        if (kind === 'liste') showListe(); else showSubpage(kind);
+        return;
+    }
     if (pageIdx === 0) {
         let ci = overviewReturnCrit;
         if (!isCriterionVisible(ci)) { const vis = visibleCriteria(); ci = vis.length ? vis[0] : 0; }
@@ -356,7 +369,7 @@ function toggleOverview() {
     }
     render();
 }
-function jumpToCriterion(ci) { pageIdx = ci + 1; noteReturnPos = -1; render(); }
+function jumpToCriterion(ci) { pageIdx = ci + 1; noteReturnPos = -1; overviewReturnSubpage = null; render(); }
 function groupOfCriterion(ci) {
     for (const g of model.groups) if (ci >= g.first && ci <= g.last) return g;
     return null;
@@ -374,7 +387,7 @@ function render() {
     overviewBlock.hidden = !overview;
     marksEl.hidden = overview;
     critNav.hidden = overview;
-    overviewBtn.textContent = overview ? 'CRITÈRES' : 'GÉNÉRAL';
+    overviewBtn.textContent = overview ? (overviewReturnSubpage ? 'RETOUR' : 'CRITÈRES') : 'GÉNÉRAL';
     // "‹ NOTES" appears only on a criterion page reached via a note's dot.
     backToNotesBtn.hidden = overview || noteReturnPos < 0;
 
@@ -603,6 +616,7 @@ function compRow(label, count, total, onClick) {
     return row;
 }
 function showSubpage(kind) {
+    subpageIsListe = false;
     const cc = computeCompletion();
     let list, title, pct = null;
     if (kind === 'marked') { list = cc.marked; title = 'étudiants notés'; }
@@ -618,12 +632,38 @@ function showSubpage(kind) {
         const a = document.createElement('div');
         a.className = 'sub-item';
         a.textContent = model.students[si].name + (pct ? ('   —   ' + pct[k].toFixed(1) + '%') : '');
-        a.addEventListener('click', () => openStudentOverview(si));
+        a.addEventListener('click', () => openStudentOverview(si, kind));
         subpageContent.appendChild(a);
     });
     showScreen('subpage');
 }
-function openStudentOverview(si) { studentIdx = si; pageIdx = 0; showScreen('grading'); render(); }
+
+// ---- Liste (full roster; each name links to that student's GENERAL page) ----
+function showListe() {
+    subpageIsListe = true;
+    subpageTitle.textContent = 'liste des étudiants';
+    subpageContent.innerHTML = '';
+    if (!model.students.length) {
+        const e = document.createElement('div'); e.className = 'sub-empty'; e.textContent = '(aucun)';
+        subpageContent.appendChild(e);
+    }
+    model.students.forEach((s, si) => {
+        const a = document.createElement('div');
+        a.className = 'sub-item';
+        a.textContent = s.name;
+        a.addEventListener('click', () => openStudentOverview(si, 'liste'));
+        subpageContent.appendChild(a);
+    });
+    showScreen('subpage');
+}
+
+// Open a student's GENERAL page from a subpage link, remembering which list to RETOUR to.
+function openStudentOverview(si, kind) {
+    studentIdx = si; pageIdx = 0;
+    overviewReturnSubpage = kind || null;
+    noteReturnPos = -1;
+    showScreen('grading'); render();
+}
 
 // ---- Notes (stored on a "notes" sheet at the same (row, col) as the mark cell) ----
 function getNote(student, criterion) {
@@ -686,6 +726,7 @@ function gotoNoteCriterion() {
     if (!notesList.length) return;
     const { si, ci } = notesList[notePos];
     noteReturnPos = notePos;
+    overviewReturnSubpage = null;
     studentIdx = si;
     pageIdx = ci + 1;
     showScreen('grading');

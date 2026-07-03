@@ -145,6 +145,10 @@ public class MainActivity extends AppCompatActivity {
     private static final int SUBPAGE_PARTIAL = 1;
     private static final int SUBPAGE_UNMARKED = 2;
     private static final int SUBPAGE_MARKED = 3;
+    private static final int SUBPAGE_LISTE = 4;
+    // The generic subpage list is shared between Complétude (back → completion) and the Liste
+    // roster (back → grading). This flag routes the subpage BACK button to the right place.
+    private boolean subpageIsListe;
     private boolean dirty;
     // True from pressing SAUVER until the write finishes; drives the "• sauvegarde…" indicator.
     private boolean saving;
@@ -222,7 +226,7 @@ public class MainActivity extends AppCompatActivity {
 
         findViewById(R.id.filterBackButton).setOnClickListener(v -> closeFilterScreen());
         findViewById(R.id.completionBackButton).setOnClickListener(v -> showGrading());
-        findViewById(R.id.subpageBackButton).setOnClickListener(v -> showCompletionScreen());
+        findViewById(R.id.subpageBackButton).setOnClickListener(v -> onSubpageBack());
         findViewById(R.id.selectAllGroupsButton).setOnClickListener(v -> setAllGroupsHidden(false));
         findViewById(R.id.clearAllGroupsButton).setOnClickListener(v -> setAllGroupsHidden(true));
         criterionNote.setOnClickListener(v -> editCurrentCriterionNote());
@@ -277,12 +281,14 @@ public class MainActivity extends AppCompatActivity {
         menu.getMenu().add(0, 1, 0, R.string.filter_groups);
         menu.getMenu().add(0, 2, 1, R.string.completion);
         menu.getMenu().add(0, 3, 2, R.string.notes);
-        menu.getMenu().add(0, 4, 3, R.string.change_file);
-        menu.getMenu().add(0, 5, 4, R.string.check_updates);
+        menu.getMenu().add(0, 6, 3, R.string.liste);
+        menu.getMenu().add(0, 4, 4, R.string.change_file);
+        menu.getMenu().add(0, 5, 5, R.string.check_updates);
         menu.setOnMenuItemClickListener(item -> {
             if (item.getItemId() == 1) { showFilterScreen(); return true; }
             if (item.getItemId() == 2) { showCompletionScreen(); return true; }
             if (item.getItemId() == 3) { showNotesScreen(); return true; }
+            if (item.getItemId() == 6) { showListeSubpage(); return true; }
             if (item.getItemId() == 4) { launchPicker(); return true; }
             if (item.getItemId() == 5) { checkForUpdates(); return true; }
             return false;
@@ -524,6 +530,7 @@ public class MainActivity extends AppCompatActivity {
             overviewReturnSubpage = 0;
             if (kind == SUBPAGE_MARKED) showMarkedSubpage();
             else if (kind == SUBPAGE_PARTIAL) showPartialSubpage();
+            else if (kind == SUBPAGE_LISTE) showListeSubpage();
             else showUnmarkedSubpage();
         } else if (overviewReturnPage >= 0) {
             pageIdx = overviewReturnPage;
@@ -1273,6 +1280,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void showMarkedSubpage() {
+        subpageIsListe = false;
         Completion cc = computeCompletion();
         subpageTitle.setText("étudiants notés");
         subpageContent.removeAllViews();
@@ -1284,6 +1292,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void showPartialSubpage() {
+        subpageIsListe = false;
         Completion cc = computeCompletion();
         subpageTitle.setText("étudiants partiellement notés");
         subpageContent.removeAllViews();
@@ -1298,6 +1307,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void showUnmarkedSubpage() {
+        subpageIsListe = false;
         Completion cc = computeCompletion();
         subpageTitle.setText("étudiants non notés");
         subpageContent.removeAllViews();
@@ -1306,6 +1316,28 @@ public class MainActivity extends AppCompatActivity {
             subpageContent.addView(studentLinkRow(model.students.get(si).name, si, SUBPAGE_UNMARKED));
         }
         setScreen(subpageContainer);
+    }
+
+    /**
+     * Full roster (burger → "Liste"): every student, each a link to their GENERAL page. Reuses the
+     * generic subpage list; {@code subpageIsListe} routes its BACK button back to the grading screen.
+     */
+    private void showListeSubpage() {
+        if (model == null) return;
+        subpageIsListe = true;
+        subpageTitle.setText(R.string.liste_title);
+        subpageContent.removeAllViews();
+        if (model.students.isEmpty()) subpageContent.addView(emptyNote("(aucun)"));
+        for (int si = 0; si < model.students.size(); si++) {
+            subpageContent.addView(studentLinkRow(model.students.get(si).name, si, SUBPAGE_LISTE));
+        }
+        setScreen(subpageContainer);
+    }
+
+    /** The generic subpage BACK button: to the roster's grading screen, or back to Complétude. */
+    private void onSubpageBack() {
+        if (subpageIsListe) showGrading();
+        else showCompletionScreen();
     }
 
     /**

@@ -22,6 +22,8 @@
     <string name="select_all_groups">SÉLECTIONNER TOUT</string>
     <string name="clear_all_groups">EFFACER SÉLECTION</string>
     <string name="notes">Notes</string>
+    <string name="liste">Liste</string>
+    <string name="liste_title">liste des étudiants</string>
     <string name="prev_note">‹ note</string>
     <string name="next_note">note ›</string>
     <string name="back_to_notes">‹ NOTES</string>
