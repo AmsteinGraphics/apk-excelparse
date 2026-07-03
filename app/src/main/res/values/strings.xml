@@ -24,7 +24,6 @@
     <string name="notes">Notes</string>
     <string name="prev_note">‹ note</string>
     <string name="next_note">note ›</string>
-    <string name="go_to_criterion">ALLER À…</string>
     <string name="back_to_notes">‹ NOTES</string>
     <string name="note_hint">ajouter une note…</string>
     <string name="no_notes">aucune note enregistrée</string>

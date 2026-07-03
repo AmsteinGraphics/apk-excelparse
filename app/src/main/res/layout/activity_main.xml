@@ -765,17 +765,6 @@
         </LinearLayout>
 
         <com.google.android.material.button.MaterialButton
-            android:id="@+id/gotoNoteButton"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="12dp"
-            android:layout_marginEnd="12dp"
-            android:layout_marginTop="6dp"
-            android:insetTop="0dp"
-            android:insetBottom="0dp"
-            android:text="@string/go_to_criterion" />
-
-        <com.google.android.material.button.MaterialButton
             android:id="@+id/notesBackButton"
             style="@style/Widget.MaterialComponents.Button.TextButton"
             android:layout_width="match_parent"

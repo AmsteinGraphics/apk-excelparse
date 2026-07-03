@@ -229,9 +229,10 @@ public class MainActivity extends AppCompatActivity {
         backToNotesButton.setOnClickListener(v -> returnToNotes());
         findViewById(R.id.prevNoteButton).setOnClickListener(v -> navigateNote(-1));
         findViewById(R.id.nextNoteButton).setOnClickListener(v -> navigateNote(1));
-        findViewById(R.id.gotoNoteButton).setOnClickListener(v -> gotoNoteCriterion());
         findViewById(R.id.notesBackButton).setOnClickListener(v -> showGrading());
         noteText.setOnClickListener(v -> editCarouselNote());
+        // Tapping the dot jumps to its criterion page (replaces the old "ALLER À…" button).
+        noteDot.setOnDotTapListener(idx -> gotoNoteCriterion());
 
         findViewById(R.id.pickButton).setOnClickListener(v -> launchPicker());
         findViewById(R.id.pickerCheckUpdatesButton).setOnClickListener(v -> checkForUpdates());
@@ -1482,7 +1483,6 @@ public class MainActivity extends AppCompatActivity {
         noteDot.setVisibility(has ? View.VISIBLE : View.GONE);
         findViewById(R.id.prevNoteButton).setEnabled(notesList.size() > 1);
         findViewById(R.id.nextNoteButton).setEnabled(notesList.size() > 1);
-        findViewById(R.id.gotoNoteButton).setEnabled(has);
         if (!has) {
             noteCounter.setText("");
             return;
