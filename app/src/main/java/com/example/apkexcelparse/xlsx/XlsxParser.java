@@ -29,6 +29,9 @@ public class XlsxParser {
 
     private static final String EVALUATION_SHEET = "evaluation";
     private static final String CRITERIA_SHEET = "criteres_reviewed";
+    // App-managed sheet holding per-(student, criterion) note text at the SAME (row, column) as the
+    // mark cell on the evaluation sheet. Created on demand when the first note is written.
+    private static final String NOTES_SHEET = "notes";
 
     // Excel fill colors that tag meaningful cells in the workbook.
     // Note: criterion labels display as pale blue in Excel but come from a themed fill
@@ -202,6 +205,46 @@ public class XlsxParser {
         if (rgb == null || !matchesRgb(rgb, MARK_CELL_RGB)) return false;
         cell.setBlank();
         return true;
+    }
+
+    /**
+     * Read the note text for (student, criterion) from the notes sheet, or "" if there is none.
+     * Notes mirror the mark cell's (row, column) on a separate "notes" sheet.
+     */
+    public static String readNote(XSSFWorkbook workbook, Student student, Criterion criterion) {
+        Sheet notes = workbook.getSheet(NOTES_SHEET);
+        if (notes == null) return "";
+        Row row = notes.getRow(student.rowIndex);
+        if (row == null) return "";
+        Cell cell = row.getCell(criterion.columnIndex);
+        if (cell == null) return "";
+        if (cell.getCellType() == CellType.STRING) return cell.getStringCellValue();
+        return "";
+    }
+
+    /**
+     * Write (or clear, when text is blank) the note for (student, criterion) on the notes sheet,
+     * at the same (row, column) as its mark cell. Creates the notes sheet on first use.
+     */
+    public static void writeNote(XSSFWorkbook workbook, Student student, Criterion criterion, String text) {
+        boolean empty = text == null || text.trim().isEmpty();
+        Sheet notes = workbook.getSheet(NOTES_SHEET);
+        if (notes == null) {
+            if (empty) return;                 // don't create the sheet just to store nothing
+            notes = workbook.createSheet(NOTES_SHEET);
+        }
+        Row row = notes.getRow(student.rowIndex);
+        if (row == null) {
+            if (empty) return;
+            row = notes.createRow(student.rowIndex);
+        }
+        Cell cell = row.getCell(criterion.columnIndex);
+        if (empty) {
+            if (cell != null) cell.setBlank();
+            return;
+        }
+        if (cell == null) cell = row.createCell(criterion.columnIndex);
+        cell.setCellValue(text.trim());
     }
 
     /**
