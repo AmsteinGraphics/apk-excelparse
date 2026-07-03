@@ -41,6 +41,9 @@ public class XlsxParser {
     private static final int COL_STUDENT_NUMBER = 0;
     private static final int COL_STUDENT_NAME = 1;
     public static final int COL_STUDENT_AVERAGE = 89; // Excel column CL
+    // The "coefficient du groupe" row (Excel row 2). Each group's weight sits here at the group's
+    // first-criterion column, aligned with the group-name cell on row 1.
+    private static final int GROUP_COEF_ROW = 1;
 
     // Columns on the 'criteres_reviewed' sheet (0-indexed).
     private static final int META_COL_GROUP = 1;
@@ -114,7 +117,7 @@ public class XlsxParser {
             students.add(new Student(row.getRowNum(), number, name));
         }
 
-        return new GradingModel(students, criteria, buildGroups(criteria));
+        return new GradingModel(students, criteria, buildGroups(criteria, eval));
     }
 
     /**
@@ -122,22 +125,33 @@ public class XlsxParser {
      * criteria sharing the same group name is one group. The group's grade column is the
      * "sur 6" formula column immediately to the right of the group's last criterion column.
      */
-    private static List<Group> buildGroups(List<Criterion> criteria) {
+    private static List<Group> buildGroups(List<Criterion> criteria, Sheet eval) {
         List<Group> groups = new ArrayList<>();
         int i = 0;
         while (i < criteria.size()) {
             String name = criteria.get(i).groupName;
+            int firstCol = criteria.get(i).columnIndex;
             int last = i;
-            int maxCol = criteria.get(i).columnIndex;
+            int maxCol = firstCol;
             while (last + 1 < criteria.size()
                     && Objects.equals(criteria.get(last + 1).groupName, name)) {
                 last++;
                 maxCol = Math.max(maxCol, criteria.get(last).columnIndex);
             }
-            groups.add(new Group(name, i, last, maxCol + 1));
+            // Group weight from row 2 at the group's first-criterion column (a plain number there).
+            Double coef = readStaticDouble(eval, GROUP_COEF_ROW, firstCol);
+            groups.add(new Group(name, i, last, maxCol + 1, coef));
             i = last + 1;
         }
         return groups;
+    }
+
+    /** Read a numeric value at a fixed (row, column) on a sheet, or null. Non-per-student cells. */
+    private static Double readStaticDouble(Sheet sheet, int rowIndex, int columnIndex) {
+        if (sheet == null) return null;
+        Row row = sheet.getRow(rowIndex);
+        if (row == null) return null;
+        return readCellDouble(row.getCell(columnIndex));
     }
 
     /**

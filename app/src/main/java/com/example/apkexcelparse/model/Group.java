@@ -12,11 +12,17 @@ public class Group {
     public final int firstCriterionIndex; // inclusive index into GradingModel.criteria
     public final int lastCriterionIndex;  // inclusive
     public final int averageColumnIndex;  // evaluation-sheet column of the "sur 6" group grade
+    // Group weight from the "coefficient du groupe" row (evaluation row 2), read at the group's
+    // first-criterion column. Used to weight the group's /6 grade in the general average, exactly
+    // as Excel's CK formula does. May be null if the workbook has no such value.
+    public final Double coefficient;
 
-    public Group(String name, int firstCriterionIndex, int lastCriterionIndex, int averageColumnIndex) {
+    public Group(String name, int firstCriterionIndex, int lastCriterionIndex,
+                 int averageColumnIndex, Double coefficient) {
         this.name = name;
         this.firstCriterionIndex = firstCriterionIndex;
         this.lastCriterionIndex = lastCriterionIndex;
         this.averageColumnIndex = averageColumnIndex;
+        this.coefficient = coefficient;
     }
 }

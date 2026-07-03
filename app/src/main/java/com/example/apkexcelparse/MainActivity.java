@@ -19,6 +19,8 @@ import android.view.Gravity;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
+import android.widget.CheckBox;
+import android.widget.LinearLayout;
 import android.widget.PopupMenu;
 import android.widget.ProgressBar;
 import android.widget.TableLayout;
@@ -61,7 +63,11 @@ import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -103,6 +109,15 @@ public class MainActivity extends AppCompatActivity {
     private DotProgressView dotProgressView;
     private TableLayout overviewTable;
 
+    // Overlay screens (filter / completion / subpage) reachable from the burger menu.
+    private View filterContainer;
+    private View completionContainer;
+    private View subpageContainer;
+    private LinearLayout filterList;
+    private LinearLayout completionContent;
+    private LinearLayout subpageContent;
+    private TextView subpageTitle;
+
     private XSSFWorkbook workbook;
     private FormulaEvaluator formulaEvaluator;
     private GradingModel model;
@@ -114,6 +129,11 @@ public class MainActivity extends AppCompatActivity {
     // return to here (>= 1). -1 = no pending return, so the button shows "OVERVIEW".
     private int overviewReturnPage = -1;
     private boolean dirty;
+
+    // Per-group visibility filter. groupHidden[i] hides model.groups.get(i) everywhere in the app;
+    // remembered per workbook (keyed by display name). Never touches the workbook's formulas.
+    private boolean[] groupHidden;
+    private static final String FILTER_PREFIX = "filter_hidden::";
 
     // Mark values for the 5 buttons, left→right (0 … 1).
     private static final float[] MARK_VALUES = {0f, 0.25f, 0.5f, 0.75f, 1f};
@@ -154,6 +174,17 @@ public class MainActivity extends AppCompatActivity {
         studentAverage = findViewById(R.id.studentAverage);
         dotProgressView = findViewById(R.id.dotProgressView);
         overviewTable = findViewById(R.id.overviewTable);
+        filterContainer = findViewById(R.id.filterContainer);
+        completionContainer = findViewById(R.id.completionContainer);
+        subpageContainer = findViewById(R.id.subpageContainer);
+        filterList = findViewById(R.id.filterList);
+        completionContent = findViewById(R.id.completionContent);
+        subpageContent = findViewById(R.id.subpageContent);
+        subpageTitle = findViewById(R.id.subpageTitle);
+
+        findViewById(R.id.filterBackButton).setOnClickListener(v -> closeFilterScreen());
+        findViewById(R.id.completionBackButton).setOnClickListener(v -> showGrading());
+        findViewById(R.id.subpageBackButton).setOnClickListener(v -> showCompletionScreen());
 
         findViewById(R.id.pickButton).setOnClickListener(v -> launchPicker());
         findViewById(R.id.pickerCheckUpdatesButton).setOnClickListener(v -> checkForUpdates());
@@ -193,11 +224,15 @@ public class MainActivity extends AppCompatActivity {
 
     private void showOverflowMenu(View anchor) {
         PopupMenu menu = new PopupMenu(this, anchor);
-        menu.getMenu().add(0, 1, 0, R.string.change_file);
-        menu.getMenu().add(0, 2, 1, R.string.check_updates);
+        menu.getMenu().add(0, 1, 0, R.string.filter_groups);
+        menu.getMenu().add(0, 2, 1, R.string.completion);
+        menu.getMenu().add(0, 3, 2, R.string.change_file);
+        menu.getMenu().add(0, 4, 3, R.string.check_updates);
         menu.setOnMenuItemClickListener(item -> {
-            if (item.getItemId() == 1) { launchPicker(); return true; }
-            if (item.getItemId() == 2) { checkForUpdates(); return true; }
+            if (item.getItemId() == 1) { showFilterScreen(); return true; }
+            if (item.getItemId() == 2) { showCompletionScreen(); return true; }
+            if (item.getItemId() == 3) { launchPicker(); return true; }
+            if (item.getItemId() == 4) { checkForUpdates(); return true; }
             return false;
         });
         menu.show();
@@ -284,6 +319,7 @@ public class MainActivity extends AppCompatActivity {
                     pageIdx = 0;
                     overviewReturnPage = -1;
                     dirty = false;
+                    loadFilterState();
                     setLoading(false);
                     showGrading();
                     render();
@@ -354,16 +390,25 @@ public class MainActivity extends AppCompatActivity {
         return '#';
     }
 
-    /** Jump to the first criterion page of the previous/next group. */
+    /** Jump to the first criterion page of the previous/next *visible* group (clamped). */
     private void navigateGroup(int delta) {
         if (model == null || model.groups.isEmpty()) return;
+        List<Integer> visible = visibleGroupIndices();
+        if (visible.isEmpty()) return;
         // Landing on a criterion page abandons any stashed "return to criterion" from OVERVIEW.
         overviewReturnPage = -1;
         int curGroupIdx = isOverviewPage() ? -1 : indexOfGroupForCriterion(pageIdx - 1);
-        int target = curGroupIdx + delta;
-        if (target < 0) target = 0;
-        if (target >= model.groups.size()) target = model.groups.size() - 1;
-        pageIdx = model.groups.get(target).firstCriterionIndex + 1;
+        // Position of the current group within the visible list (-1 when on the overview).
+        int pos = visible.indexOf(curGroupIdx);
+        int target;
+        if (pos < 0) {
+            target = delta >= 0 ? 0 : visible.size() - 1;
+        } else {
+            target = pos + delta;
+            if (target < 0) target = 0;
+            if (target >= visible.size()) target = visible.size() - 1;
+        }
+        pageIdx = model.groups.get(visible.get(target)).firstCriterionIndex + 1;
         render();
     }
 
@@ -460,12 +505,15 @@ public class MainActivity extends AppCompatActivity {
         int rowH = Math.round(dpToPx(33f));
         // Fixed-width dots column = widest group's dot string, so every group name starts at the
         // same x (dots stay left-packed inside it).
+        List<Integer> visibleGroups = visibleGroupIndices();
         int maxDots = 1;
-        for (Group g : model.groups) {
+        for (int gi : visibleGroups) {
+            Group g = model.groups.get(gi);
             maxDots = Math.max(maxDots, g.lastCriterionIndex - g.firstCriterionIndex + 1);
         }
         int dotsCellW = Math.round(slotPx * maxDots);
-        for (Group g : model.groups) {
+        for (int gi : visibleGroups) {
+            Group g = model.groups.get(gi);
             TableRow row = new TableRow(this);
 
             int n = g.lastCriterionIndex - g.firstCriterionIndex + 1;
@@ -532,10 +580,10 @@ public class MainActivity extends AppCompatActivity {
         return tv;
     }
 
-    /** Slot width (px) of one dot in the full-width header string of all criteria. */
+    /** Slot width (px) of one dot in the full-width header string of the visible criteria. */
     private float headerSlotPx() {
         float contentPx = getResources().getDisplayMetrics().widthPixels - dpToPx(48f);
-        int n = Math.max(1, model.criteria.size());
+        int n = Math.max(1, visibleCriterionIndices().size());
         return contentPx / n;
     }
 
@@ -563,9 +611,6 @@ public class MainActivity extends AppCompatActivity {
     private void renderCriterion(Criterion c, Student s) {
         overviewTable.setVisibility(View.GONE);
         criterionGroup.setVisibility(View.VISIBLE);
-        // "critère N · coefficient X" line removed — the criterion id now sits under each dot and the
-        // coefficient inside each dot, so this text row is redundant.
-        criterionIdCoef.setVisibility(View.GONE);
         criterionContract.setVisibility(View.VISIBLE);
         criterionRemarks.setVisibility(View.VISIBLE);
         markButtonsContainer.setVisibility(View.VISIBLE);
@@ -573,6 +618,19 @@ public class MainActivity extends AppCompatActivity {
         criterionGroup.setText(c.groupName != null ? c.groupName : "");
         criterionContract.setText(c.contract != null ? c.contract : "");
         criterionRemarks.setText(c.remarks != null ? c.remarks : "");
+
+        // Under the group name: the group's weight ("coeff. N"), same size/weight as the name but gray.
+        Group g = model.groupForCriterion(pageIdx - 1);
+        String groupCoef = g != null ? coefDigit(g.coefficient) : null;
+        if (groupCoef != null) {
+            criterionIdCoef.setText("coeff. " + groupCoef);
+            criterionIdCoef.setTextSize(16f);
+            criterionIdCoef.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+            criterionIdCoef.setTextColor(0xFF888888);
+            criterionIdCoef.setVisibility(View.VISIBLE);
+        } else {
+            criterionIdCoef.setVisibility(View.GONE);
+        }
 
         Double existing = XlsxParser.readMark(workbook, s, c);
         // No stored mark → nothing selected (all buttons shaded).
@@ -626,28 +684,26 @@ public class MainActivity extends AppCompatActivity {
     private void refreshDots() {
         if (model == null || workbook == null || dotProgressView == null) return;
         Student s = model.students.get(studentIdx);
-        int first;
-        int last; // inclusive criterion indices to display
-        if (isOverviewPage() || model.criteria.isEmpty()) {
-            first = 0;
-            last = model.criteria.size() - 1;
-        } else {
-            Group g = model.groupForCriterion(pageIdx - 1);
-            if (g != null) {
-                first = g.firstCriterionIndex;
-                last = g.lastCriterionIndex;
-            } else {
-                first = last = pageIdx - 1;
-            }
-        }
         boolean overview = isOverviewPage();
-        int n = last - first + 1;
+        // Which criteria to show: all visible criteria on the overview, or the current group's
+        // criteria on a criterion page (the group is always visible when a criterion page is shown).
+        List<Integer> idxs;
+        if (overview || model.criteria.isEmpty()) {
+            idxs = visibleCriterionIndices();
+        } else {
+            idxs = new ArrayList<>();
+            Group g = model.groupForCriterion(pageIdx - 1);
+            int first = g != null ? g.firstCriterionIndex : pageIdx - 1;
+            int last = g != null ? g.lastCriterionIndex : pageIdx - 1;
+            for (int i = first; i <= last; i++) idxs.add(i);
+        }
+        int n = idxs.size();
         int[] buckets = new int[n];
         float[] scales = new float[n];
         String[] labels = new String[n];
         String[] critIds = new String[n];
         for (int i = 0; i < n; i++) {
-            Criterion c = model.criteria.get(first + i);
+            Criterion c = model.criteria.get(idxs.get(i));
             buckets[i] = markToBucket(XlsxParser.readMark(workbook, s, c));
             scales[i] = coefScale(c.coefficient, 0.33f);
             labels[i] = coefDigit(c.coefficient);
@@ -668,11 +724,12 @@ public class MainActivity extends AppCompatActivity {
         dotProgressView.setLabels(overview ? null : labels);
         dotProgressView.setBelowLabels(overview ? null : critIds);
         // Highlight the current criterion's dot on criterion pages; none on the overview.
-        dotProgressView.setHighlightIndex(overview ? -1 : (pageIdx - 1) - first);
+        dotProgressView.setHighlightIndex(overview ? -1 : idxs.indexOf(pageIdx - 1));
         // On criterion pages the dots are tappable to jump to that criterion within the group;
         // the overview's all-criteria dots stay non-interactive.
-        final int groupFirst = first;
-        dotProgressView.setOnDotTapListener(overview ? null : idx -> goToCriterion(groupFirst + idx));
+        final List<Integer> tapTargets = idxs;
+        dotProgressView.setOnDotTapListener(
+                overview ? null : idx -> goToCriterion(tapTargets.get(idx)));
     }
 
     /** Jump to a specific criterion of the current student (used by tapping a group dot). */
@@ -700,12 +757,18 @@ public class MainActivity extends AppCompatActivity {
     private void refreshAverage() {
         if (model == null || workbook == null || studentAverage == null) return;
         Student s = model.students.get(studentIdx);
-        int col = XlsxParser.COL_STUDENT_AVERAGE;
-        if (!isOverviewPage()) {
+        Double avg;
+        if (isOverviewPage()) {
+            // Overview: Excel's real CL when nothing is filtered, else our weighted mean of the
+            // visible groups (computed on the fly; the workbook's formulas are never changed).
+            avg = anyGroupHidden()
+                    ? computeFilteredGeneralAverage(s)
+                    : XlsxParser.readNumericAt(workbook, s, XlsxParser.COL_STUDENT_AVERAGE, formulaEvaluator);
+        } else {
             Group g = model.groupForCriterion(pageIdx - 1);
-            if (g != null) col = g.averageColumnIndex;
+            int col = g != null ? g.averageColumnIndex : XlsxParser.COL_STUDENT_AVERAGE;
+            avg = XlsxParser.readNumericAt(workbook, s, col, formulaEvaluator);
         }
-        Double avg = XlsxParser.readNumericAt(workbook, s, col, formulaEvaluator);
         if (avg == null || avg.isNaN()) {
             studentAverage.setText("");
         } else {
@@ -873,14 +936,336 @@ public class MainActivity extends AppCompatActivity {
         return base + "-graded.xlsx";
     }
 
+    /** Show exactly one top-level screen; hide the picker, grading, and all overlays. */
+    private void setScreen(View screen) {
+        pickerContainer.setVisibility(screen == pickerContainer ? View.VISIBLE : View.GONE);
+        gradingContainer.setVisibility(screen == gradingContainer ? View.VISIBLE : View.GONE);
+        filterContainer.setVisibility(screen == filterContainer ? View.VISIBLE : View.GONE);
+        completionContainer.setVisibility(screen == completionContainer ? View.VISIBLE : View.GONE);
+        subpageContainer.setVisibility(screen == subpageContainer ? View.VISIBLE : View.GONE);
+    }
+
     private void showPicker() {
-        pickerContainer.setVisibility(View.VISIBLE);
-        gradingContainer.setVisibility(View.GONE);
+        setScreen(pickerContainer);
     }
 
     private void showGrading() {
-        pickerContainer.setVisibility(View.GONE);
-        gradingContainer.setVisibility(View.VISIBLE);
+        setScreen(gradingContainer);
+    }
+
+    // ---- Group filter -------------------------------------------------------------------------
+
+    private boolean isGroupHiddenAt(int groupIndex) {
+        return groupHidden != null && groupIndex >= 0 && groupIndex < groupHidden.length
+                && groupHidden[groupIndex];
+    }
+
+    private boolean anyGroupHidden() {
+        if (groupHidden == null) return false;
+        for (boolean b : groupHidden) if (b) return true;
+        return false;
+    }
+
+    private boolean allGroupsHidden() {
+        if (groupHidden == null || groupHidden.length == 0) return false;
+        for (boolean b : groupHidden) if (!b) return false;
+        return true;
+    }
+
+    /** Indices into model.groups of the currently visible (ticked) groups, in order. */
+    private List<Integer> visibleGroupIndices() {
+        List<Integer> r = new ArrayList<>();
+        if (model == null) return r;
+        for (int i = 0; i < model.groups.size(); i++) if (!isGroupHiddenAt(i)) r.add(i);
+        return r;
+    }
+
+    private boolean isCriterionVisible(int criterionIndex) {
+        return !isGroupHiddenAt(indexOfGroupForCriterion(criterionIndex));
+    }
+
+    /** Indices into model.criteria of criteria belonging to visible groups, in order. */
+    private List<Integer> visibleCriterionIndices() {
+        List<Integer> r = new ArrayList<>();
+        if (model == null) return r;
+        for (int i = 0; i < model.criteria.size(); i++) if (isCriterionVisible(i)) r.add(i);
+        return r;
+    }
+
+    private String filterPrefsKey() {
+        String d = getSharedPreferences(PREFS, MODE_PRIVATE).getString(KEY_DISPLAY_NAME, "");
+        return FILTER_PREFIX + (d == null ? "" : d);
+    }
+
+    /** Load the per-workbook filter (hidden group names) into groupHidden. Defaults to all visible. */
+    private void loadFilterState() {
+        groupHidden = new boolean[model.groups.size()];
+        Set<String> hidden = getSharedPreferences(PREFS, MODE_PRIVATE)
+                .getStringSet(filterPrefsKey(), null);
+        if (hidden == null || hidden.isEmpty()) return;
+        for (int i = 0; i < model.groups.size(); i++) {
+            String name = model.groups.get(i).name;
+            if (name != null && hidden.contains(name)) groupHidden[i] = true;
+        }
+        if (allGroupsHidden()) java.util.Arrays.fill(groupHidden, false); // never hide everything
+    }
+
+    private void saveFilterState() {
+        if (groupHidden == null) return;
+        Set<String> hidden = new HashSet<>();
+        for (int i = 0; i < groupHidden.length; i++) {
+            if (groupHidden[i]) {
+                String n = model.groups.get(i).name;
+                if (n != null) hidden.add(n);
+            }
+        }
+        getSharedPreferences(PREFS, MODE_PRIVATE).edit()
+                .putStringSet(filterPrefsKey(), hidden).apply();
+    }
+
+    private void showFilterScreen() {
+        if (model == null) return;
+        buildFilterList();
+        setScreen(filterContainer);
+    }
+
+    /** One checkbox per group; ticked = visible. Enforces at least one visible group. */
+    private void buildFilterList() {
+        filterList.removeAllViews();
+        int pad = Math.round(dpToPx(8f));
+        for (int i = 0; i < model.groups.size(); i++) {
+            final int gi = i;
+            Group g = model.groups.get(i);
+            CheckBox cb = new CheckBox(this);
+            String coef = coefDigit(g.coefficient);
+            String label = (g.name != null ? g.name : "(groupe)")
+                    + (coef != null ? "   ·   coeff. " + coef : "");
+            cb.setText(label);
+            cb.setTextSize(16f);
+            cb.setPadding(pad, pad, pad, pad);
+            cb.setChecked(!isGroupHiddenAt(gi));
+            cb.setOnCheckedChangeListener((btn, checked) -> {
+                if (!checked && wouldHideAllGroups(gi)) {
+                    btn.setChecked(true); // keep at least one group visible
+                    Toast.makeText(this, "au moins un groupe doit rester visible",
+                            Toast.LENGTH_SHORT).show();
+                    return;
+                }
+                groupHidden[gi] = !checked;
+                saveFilterState();
+            });
+            filterList.addView(cb);
+        }
+    }
+
+    private boolean wouldHideAllGroups(int toHide) {
+        for (int i = 0; i < groupHidden.length; i++) {
+            boolean hidden = i == toHide || groupHidden[i];
+            if (!hidden) return false;
+        }
+        return true;
+    }
+
+    private void closeFilterScreen() {
+        // If the criterion page we were on now sits in a hidden group, fall back to the overview.
+        if (model != null && !isOverviewPage()
+                && isGroupHiddenAt(indexOfGroupForCriterion(pageIdx - 1))) {
+            pageIdx = 0;
+            overviewReturnPage = -1;
+        }
+        showGrading();
+        render();
+    }
+
+    /**
+     * General average for the overview when a filter is active: the visible groups' /6 grades
+     * weighted by their group coefficients, quarter-rounded — the same math as Excel's CK→CL,
+     * restricted to ticked groups. Computed for display only; the workbook is never changed.
+     */
+    private Double computeFilteredGeneralAverage(Student s) {
+        double wsum = 0, w = 0;
+        for (int gi : visibleGroupIndices()) {
+            Group g = model.groups.get(gi);
+            Double grade = XlsxParser.readNumericAt(workbook, s, g.averageColumnIndex, formulaEvaluator);
+            Double coef = g.coefficient;
+            if (grade == null || grade.isNaN() || coef == null || coef <= 0) continue;
+            wsum += grade * coef;
+            w += coef;
+        }
+        if (w <= 0) return null;
+        double ck = Math.round((wsum / w) * 100.0) / 100.0;                 // CK: round to 2 decimals
+        return Math.round(Math.floor(ck * 4 + 0.5) / 4 * 100.0) / 100.0;    // CL: round to nearest 0.25
+    }
+
+    // ---- Completion page ----------------------------------------------------------------------
+
+    /** Counts of marked/partial/unmarked criteria, groups and students over the visible groups. */
+    private static class Completion {
+        int markedCriteria, totalCriteria;
+        int markedGroups, totalGroups;
+        int partialGroups, unmarkedGroups;
+        int totalStudents;
+        final List<Integer> partialStudents = new ArrayList<>();  // indices into model.students
+        final List<Double> partialPercents = new ArrayList<>();   // parallel to partialStudents, 0..100
+        final List<Integer> unmarkedStudents = new ArrayList<>();
+    }
+
+    private Completion computeCompletion() {
+        Completion cc = new Completion();
+        List<Integer> vgroups = visibleGroupIndices();
+        int nStudents = model.students.size();
+        int nVisibleCriteria = visibleCriterionIndices().size();
+        cc.totalStudents = nStudents;
+        cc.totalCriteria = nStudents * nVisibleCriteria;
+        cc.totalGroups = nStudents * vgroups.size();
+        for (int si = 0; si < nStudents; si++) {
+            Student s = model.students.get(si);
+            int studentMarked = 0;
+            for (int gi : vgroups) {
+                Group g = model.groups.get(gi);
+                int gSize = g.lastCriterionIndex - g.firstCriterionIndex + 1;
+                int gMarked = 0;
+                for (int ci = g.firstCriterionIndex; ci <= g.lastCriterionIndex; ci++) {
+                    if (XlsxParser.readMark(workbook, s, model.criteria.get(ci)) != null) gMarked++;
+                }
+                if (gMarked == gSize) cc.markedGroups++;
+                else if (gMarked > 0) cc.partialGroups++;
+                else cc.unmarkedGroups++;
+                studentMarked += gMarked;
+            }
+            cc.markedCriteria += studentMarked;
+            if (nVisibleCriteria > 0 && studentMarked == nVisibleCriteria) {
+                // fully marked — not listed in either subpage
+            } else if (studentMarked > 0) {
+                cc.partialStudents.add(si);
+                cc.partialPercents.add(100.0 * studentMarked / nVisibleCriteria);
+            } else {
+                cc.unmarkedStudents.add(si);
+            }
+        }
+        return cc;
+    }
+
+    private void showCompletionScreen() {
+        if (model == null) return;
+        buildCompletion();
+        setScreen(completionContainer);
+    }
+
+    private void buildCompletion() {
+        completionContent.removeAllViews();
+        Completion cc = computeCompletion();
+        completionContent.addView(sectionHeader("totaux"));
+        completionContent.addView(statRow("critères notés", cc.markedCriteria, cc.totalCriteria, false, null));
+        completionContent.addView(statRow("groupes notés", cc.markedGroups, cc.totalGroups, false, null));
+        completionContent.addView(sectionHeader("notation partielle"));
+        completionContent.addView(statRow("étudiants partiellement notés",
+                cc.partialStudents.size(), cc.totalStudents, true, this::showPartialSubpage));
+        completionContent.addView(statRow("groupes partiellement notés", cc.partialGroups, cc.totalGroups, false, null));
+        completionContent.addView(sectionHeader("non noté"));
+        completionContent.addView(statRow("étudiants non notés",
+                cc.unmarkedStudents.size(), cc.totalStudents, true, this::showUnmarkedSubpage));
+        completionContent.addView(statRow("groupes non notés", cc.unmarkedGroups, cc.totalGroups, false, null));
+    }
+
+    private void showPartialSubpage() {
+        Completion cc = computeCompletion();
+        subpageTitle.setText("étudiants partiellement notés");
+        subpageContent.removeAllViews();
+        if (cc.partialStudents.isEmpty()) subpageContent.addView(emptyNote("(aucun)"));
+        for (int k = 0; k < cc.partialStudents.size(); k++) {
+            int si = cc.partialStudents.get(k);
+            String label = model.students.get(si).name + "   —   "
+                    + String.format(Locale.getDefault(), "%.1f", cc.partialPercents.get(k)) + "%";
+            subpageContent.addView(studentLinkRow(label, si));
+        }
+        setScreen(subpageContainer);
+    }
+
+    private void showUnmarkedSubpage() {
+        Completion cc = computeCompletion();
+        subpageTitle.setText("étudiants non notés");
+        subpageContent.removeAllViews();
+        if (cc.unmarkedStudents.isEmpty()) subpageContent.addView(emptyNote("(aucun)"));
+        for (int si : cc.unmarkedStudents) {
+            subpageContent.addView(studentLinkRow(model.students.get(si).name, si));
+        }
+        setScreen(subpageContainer);
+    }
+
+    /** Jump to a student's GENERAL (overview) page from a completion subpage link. */
+    private void openStudentOverview(int studentIndex) {
+        if (model == null || studentIndex < 0 || studentIndex >= model.students.size()) return;
+        studentIdx = studentIndex;
+        pageIdx = 0;
+        overviewReturnPage = -1;
+        showGrading();
+        render();
+    }
+
+    private TextView sectionHeader(String text) {
+        TextView tv = new TextView(this);
+        tv.setText(text);
+        tv.setTextSize(13f);
+        tv.setAllCaps(true);
+        tv.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+        tv.setTextColor(0xFF888888);
+        tv.setPadding(0, Math.round(dpToPx(16f)), 0, Math.round(dpToPx(4f)));
+        return tv;
+    }
+
+    private View statRow(String label, int count, int total, boolean asLink, Runnable onClick) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        int vpad = Math.round(dpToPx(8f));
+        row.setPadding(0, vpad, 0, vpad);
+
+        TextView l = new TextView(this);
+        l.setText(label);
+        l.setTextSize(16f);
+        l.setLayoutParams(new LinearLayout.LayoutParams(0,
+                LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        if (asLink) {
+            l.setTextColor(0xFF1976D2);
+            l.setPaintFlags(l.getPaintFlags() | android.graphics.Paint.UNDERLINE_TEXT_FLAG);
+            l.setClickable(true);
+            if (onClick != null) l.setOnClickListener(v -> onClick.run());
+        }
+        row.addView(l);
+
+        double pct = total > 0 ? 100.0 * count / total : 0.0;
+        TextView val = new TextView(this);
+        val.setText(count + "/" + total + "   "
+                + String.format(Locale.getDefault(), "%.1f", pct) + "%");
+        val.setTextSize(16f);
+        val.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+        val.setTextColor(0xFF333333);
+        row.addView(val);
+        return row;
+    }
+
+    private TextView studentLinkRow(String text, int studentIndex) {
+        TextView tv = new TextView(this);
+        tv.setText(text);
+        tv.setTextSize(16f);
+        tv.setTextColor(0xFF1976D2);
+        tv.setPaintFlags(tv.getPaintFlags() | android.graphics.Paint.UNDERLINE_TEXT_FLAG);
+        int pad = Math.round(dpToPx(10f));
+        tv.setPadding(0, pad, 0, pad);
+        tv.setClickable(true);
+        tv.setOnClickListener(v -> openStudentOverview(studentIndex));
+        return tv;
+    }
+
+    private TextView emptyNote(String text) {
+        TextView tv = new TextView(this);
+        tv.setText(text);
+        tv.setTextSize(15f);
+        tv.setTextColor(0xFF888888);
+        int pad = Math.round(dpToPx(10f));
+        tv.setPadding(0, pad, 0, pad);
+        return tv;
     }
 
     private void setLoading(boolean loading) {

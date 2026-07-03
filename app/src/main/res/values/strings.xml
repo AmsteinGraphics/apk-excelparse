@@ -15,4 +15,8 @@
     <string name="loading">Loading…</string>
     <string name="saving">Saving…</string>
     <string name="save_and_share">Save &amp; share</string>
+    <string name="filter_groups">filtrer les groupes</string>
+    <string name="filter_title">groupes évalués</string>
+    <string name="completion">complétude</string>
+    <string name="back">BACK</string>
 </resources>
