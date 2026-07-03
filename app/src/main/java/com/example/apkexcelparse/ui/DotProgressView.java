@@ -20,6 +20,7 @@ public class DotProgressView extends View {
     private float fixedSlotPx = 0f;  // when > 0, dots use this slot width and left-pack instead of filling getWidth()
     private int highlightIndex = -1; // index of the dot to highlight, or -1 for none
     private float sizeMultiplier = 1f; // scales both the base dot radius and the inner digit uniformly
+    private float[] referenceScales;   // thin gray outline rings drawn behind each dot (weight scale); null = none
 
     /** Notified when a dot is tapped; index is the dot's position in the current values array. */
     public interface OnDotTapListener { void onDotTap(int index); }
@@ -43,6 +44,7 @@ public class DotProgressView extends View {
     private final Paint fillPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint strokePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint textPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint refPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
 
     // 0.0 black, 0.25 red, 0.5 orange, 0.75 yellow, 1.0 green.
     private static final int[] BUCKET_COLORS = {
@@ -75,6 +77,9 @@ public class DotProgressView extends View {
         textPaint.setColor(0xFFFFFFFF);
         textPaint.setTextAlign(Paint.Align.CENTER);
         textPaint.setFakeBoldText(true);
+        refPaint.setStyle(Paint.Style.STROKE);
+        refPaint.setColor(0xFFCCCCCC);
+        refPaint.setStrokeWidth(dpToPx(1f));
     }
 
     public void setValues(int[] values) {
@@ -130,6 +135,16 @@ public class DotProgressView extends View {
      */
     public void setSizeMultiplier(float m) {
         this.sizeMultiplier = m > 0f ? m : 1f;
+        invalidate();
+    }
+
+    /**
+     * Thin light-gray outline rings drawn concentric behind every dot, one per possible weight
+     * (radius = base × scale × sizeMultiplier). Gives a visual size reference so the dot's own
+     * weight reads against all the possible ones. null = no reference rings.
+     */
+    public void setReferenceScales(float[] scales) {
+        this.referenceScales = scales;
         invalidate();
     }
 
@@ -230,8 +245,9 @@ public class DotProgressView extends View {
         float dotAreaH = h - numBand;
         // Leave room so the highlight ring (dot + fixed overshoot) never spills out of the dot area.
         float maxRadius = dotAreaH * 0.5f - overshoot;
-        // Base radius is a fixed dp (coef-2 size), still capped by the slot so crowded rows shrink.
-        float baseRadius = Math.min(slot * 0.42f, dpToPx(BASE_RADIUS_DP));
+        // Base radius is a fixed dp (coef-2 size) times the size multiplier, still capped by the slot
+        // so crowded rows shrink.
+        float baseRadius = Math.min(slot * 0.42f, dpToPx(BASE_RADIUS_DP) * sizeMultiplier);
         // Dot centres share one line; the number line sits at a fixed baseline below. A smaller dot's
         // edge is higher, so its number reads as further away — that gap encodes coefficient weight.
         float cy = dotAreaH / 2f;
@@ -242,6 +258,13 @@ public class DotProgressView extends View {
             // Keep dots (and the ring) inside the row; horizontal overlap is intentional (weight cue).
             radius = Math.min(radius, maxRadius);
             if (radius < 1f) radius = 1f;
+            // Reference rings: a thin gray outline at every possible weight size, behind the dot.
+            if (referenceScales != null) {
+                for (float rs : referenceScales) {
+                    float rr = Math.min(baseRadius * rs, maxRadius);
+                    if (rr >= 1f) canvas.drawCircle(cx, cy, rr, refPaint);
+                }
+            }
             if (i == highlightIndex) {
                 // Highlight ring: a black circle a fixed number of px larger than the dot, so it
                 // reads as a constant-weight stroke regardless of the dot's coefficient scale.

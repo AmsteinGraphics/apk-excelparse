@@ -1498,13 +1498,27 @@ public class MainActivity extends AppCompatActivity {
         noteCriterionName.setText("critère " + (c.id != null ? c.id : "")
                 + (c.contract != null && !c.contract.isEmpty() ? " · " + c.contract : ""));
         noteText.setText(getNote(pair[0], pair[1]));
-        // The criterion's dot, enlarged to 2× the criterion-page size (dot + inner coefficient digit).
+        // The criterion's dot, enlarged to 2× the criterion-page size (dot + inner coefficient digit),
+        // over thin gray rings at every possible weight so its size reads as a comparison.
         noteDot.setValues(new int[]{markToBucket(XlsxParser.readMark(workbook, s, c))});
         noteDot.setScales(new float[]{coefScale(c.coefficient, 0.33f)});
         noteDot.setLabels(new String[]{coefDigit(c.coefficient)});
         noteDot.setBelowLabels(null);
         noteDot.setHighlightIndex(-1);
+        noteDot.setReferenceScales(weightReferenceScales());
         noteDot.setSizeMultiplier(2f);
+    }
+
+    /** Radius multipliers for every distinct criterion coefficient present, ascending (weight rings). */
+    private float[] weightReferenceScales() {
+        java.util.TreeSet<Double> coefs = new java.util.TreeSet<>();
+        for (Criterion c : model.criteria) {
+            if (c.coefficient != null) coefs.add(c.coefficient);
+        }
+        float[] out = new float[coefs.size()];
+        int i = 0;
+        for (Double cf : coefs) out[i++] = coefScale(cf, 0.33f);
+        return out;
     }
 
     private void navigateNote(int delta) {
