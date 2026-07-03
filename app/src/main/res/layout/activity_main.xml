@@ -709,6 +709,13 @@
                     android:textColorHint="#999"
                     android:hint="@string/note_hint" />
 
+                <!-- The criterion's dot, enlarged (2×) — plenty of room here. -->
+                <com.example.apkexcelparse.ui.DotProgressView
+                    android:id="@+id/noteDot"
+                    android:layout_width="match_parent"
+                    android:layout_height="120dp"
+                    android:layout_marginTop="16dp" />
+
                 <TextView
                     android:id="@+id/noteEmpty"
                     android:layout_width="match_parent"

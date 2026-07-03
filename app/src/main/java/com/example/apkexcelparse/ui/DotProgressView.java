@@ -19,6 +19,7 @@ public class DotProgressView extends View {
     private String[] belowLabels;    // per-dot text drawn under the dot (criterion id); null = none
     private float fixedSlotPx = 0f;  // when > 0, dots use this slot width and left-pack instead of filling getWidth()
     private int highlightIndex = -1; // index of the dot to highlight, or -1 for none
+    private float sizeMultiplier = 1f; // scales both the base dot radius and the inner digit uniformly
 
     /** Notified when a dot is tapped; index is the dot's position in the current values array. */
     public interface OnDotTapListener { void onDotTap(int index); }
@@ -122,6 +123,16 @@ public class DotProgressView extends View {
         invalidate();
     }
 
+    /**
+     * Uniformly scale the base dot radius and the inner coefficient digit (1.0 = normal). Used to
+     * render a single enlarged dot (e.g. 2.0 for the Notes carousel); the row must be tall enough
+     * or the dot will still be capped to fit.
+     */
+    public void setSizeMultiplier(float m) {
+        this.sizeMultiplier = m > 0f ? m : 1f;
+        invalidate();
+    }
+
     /** Set (or clear, with null) a tap listener. When set, the whole slot column is tappable. */
     public void setOnDotTapListener(OnDotTapListener l) {
         this.tapListener = l;
@@ -198,7 +209,7 @@ public class DotProgressView extends View {
     private void drawLabel(Canvas canvas, float cx, float cy, String text, int color) {
         if (text == null) return;
         textPaint.setColor(color);
-        textPaint.setTextSize(dpToPx(DIGIT_TEXT_DP));
+        textPaint.setTextSize(dpToPx(DIGIT_TEXT_DP) * sizeMultiplier);
         Paint.FontMetrics fm = textPaint.getFontMetrics();
         float baseline = cy - (fm.ascent + fm.descent) / 2f;
         canvas.drawText(text, cx, baseline, textPaint);

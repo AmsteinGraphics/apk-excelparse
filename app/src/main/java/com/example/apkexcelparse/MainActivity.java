@@ -105,7 +105,7 @@ public class MainActivity extends AppCompatActivity {
     private MaterialButton nextGroupButton;
     private MaterialButton overviewButton;
     private MaterialButton saveButton;
-    private View dirtyIndicator;
+    private TextView dirtyIndicator;
     private TextView studentAverage;
     private DotProgressView dotProgressView;
     private TableLayout overviewTable;
@@ -127,6 +127,7 @@ public class MainActivity extends AppCompatActivity {
     private TextView noteCriterionName;
     private TextView noteText;
     private TextView noteEmpty;
+    private DotProgressView noteDot;
 
     private XSSFWorkbook workbook;
     private FormulaEvaluator formulaEvaluator;
@@ -145,6 +146,8 @@ public class MainActivity extends AppCompatActivity {
     private static final int SUBPAGE_UNMARKED = 2;
     private static final int SUBPAGE_MARKED = 3;
     private boolean dirty;
+    // True from pressing SAUVER until the write finishes; drives the "• sauvegarde…" indicator.
+    private boolean saving;
 
     // Per-(student, criterion) notes live on a "notes" sheet inside the workbook (see XlsxParser),
     // at the same (row, column) as the mark cell. They are dirty-tracked and saved like marks.
@@ -215,6 +218,7 @@ public class MainActivity extends AppCompatActivity {
         noteCriterionName = findViewById(R.id.noteCriterionName);
         noteText = findViewById(R.id.noteText);
         noteEmpty = findViewById(R.id.noteEmpty);
+        noteDot = findViewById(R.id.noteDot);
 
         findViewById(R.id.filterBackButton).setOnClickListener(v -> closeFilterScreen());
         findViewById(R.id.completionBackButton).setOnClickListener(v -> showGrading());
@@ -244,6 +248,8 @@ public class MainActivity extends AppCompatActivity {
                 Toast.makeText(this, "Nothing to save", Toast.LENGTH_SHORT).show();
                 return;
             }
+            saving = true;
+            updateDirtyUi();          // "• sauvegarde…" until the write finishes
             saveAsync(null);
         });
 
@@ -909,8 +915,15 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void updateDirtyUi() {
-        if (dirtyIndicator != null) {
-            dirtyIndicator.setVisibility(dirty ? View.VISIBLE : View.GONE);
+        if (dirtyIndicator == null) return;
+        if (saving) {
+            dirtyIndicator.setText("•  sauvegarde…");
+            dirtyIndicator.setVisibility(View.VISIBLE);
+        } else if (dirty) {
+            dirtyIndicator.setText("•  modifié");
+            dirtyIndicator.setVisibility(View.VISIBLE);
+        } else {
+            dirtyIndicator.setVisibility(View.GONE);
         }
     }
 
@@ -950,6 +963,7 @@ public class MainActivity extends AppCompatActivity {
             final String finalExportError = exportError;
             mainHandler.post(() -> {
                 dirty = false;
+                saving = false;
                 updateDirtyUi();
                 if (finalExportedName != null) {
                     Toast.makeText(this,
@@ -966,6 +980,8 @@ public class MainActivity extends AppCompatActivity {
             });
         } catch (Exception e) {
             mainHandler.post(() -> {
+                saving = false;
+                updateDirtyUi();      // save failed → back to "• modifié"
                 Toast.makeText(this, "Save failed: " + e.getMessage(), Toast.LENGTH_LONG).show();
                 if (then != null) then.run();
             });
@@ -1408,7 +1424,7 @@ public class MainActivity extends AppCompatActivity {
         Criterion c = model.criteria.get(criterionIndex);
         String title = model.students.get(studentIndex).name
                 + " · critère " + (c.id != null ? c.id : "");
-        new androidx.appcompat.app.AlertDialog.Builder(this)
+        androidx.appcompat.app.AlertDialog dialog = new androidx.appcompat.app.AlertDialog.Builder(this)
                 .setTitle(title)
                 .setView(wrap)
                 .setPositiveButton(android.R.string.ok, (d, w) -> {
@@ -1416,7 +1432,14 @@ public class MainActivity extends AppCompatActivity {
                     if (onSaved != null) onSaved.run();
                 })
                 .setNegativeButton(android.R.string.cancel, null)
-                .show();
+                .create();
+        // Focus the field and raise the keyboard right away, so no extra tap is needed to type.
+        input.requestFocus();
+        if (dialog.getWindow() != null) {
+            dialog.getWindow().setSoftInputMode(
+                    android.view.WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE);
+        }
+        dialog.show();
     }
 
     private void editCurrentCriterionNote() {
@@ -1456,6 +1479,7 @@ public class MainActivity extends AppCompatActivity {
         noteGroupName.setVisibility(has ? View.VISIBLE : View.GONE);
         noteCriterionName.setVisibility(has ? View.VISIBLE : View.GONE);
         noteText.setVisibility(has ? View.VISIBLE : View.GONE);
+        noteDot.setVisibility(has ? View.VISIBLE : View.GONE);
         findViewById(R.id.prevNoteButton).setEnabled(notesList.size() > 1);
         findViewById(R.id.nextNoteButton).setEnabled(notesList.size() > 1);
         findViewById(R.id.gotoNoteButton).setEnabled(has);
@@ -1474,6 +1498,13 @@ public class MainActivity extends AppCompatActivity {
         noteCriterionName.setText("critère " + (c.id != null ? c.id : "")
                 + (c.contract != null && !c.contract.isEmpty() ? " · " + c.contract : ""));
         noteText.setText(getNote(pair[0], pair[1]));
+        // The criterion's dot, enlarged to 2× the criterion-page size (dot + inner coefficient digit).
+        noteDot.setValues(new int[]{markToBucket(XlsxParser.readMark(workbook, s, c))});
+        noteDot.setScales(new float[]{coefScale(c.coefficient, 0.33f)});
+        noteDot.setLabels(new String[]{coefDigit(c.coefficient)});
+        noteDot.setBelowLabels(null);
+        noteDot.setHighlightIndex(-1);
+        noteDot.setSizeMultiplier(2f);
     }
 
     private void navigateNote(int delta) {
