@@ -63,5 +63,6 @@ then re-run the workflow.
 2. ✅ Overview page — general + per-group averages (`CK`→`CL` math, **computed in JS**
    since ExcelJS has no formula engine) and canvas dot rows; GÉNÉRAL/CRITÈRES toggle.
 3. ✅ Group filter (⋮ menu, per-workbook via `localStorage`) + Completion page with subpages.
-4. Notes (the `notes` sheet).
+4. ✅ Notes — editable box on each criterion page + a Notes carousel (⋮ menu), stored on a
+   `notes` sheet at the same (row, col) as the mark cell (travels with the file, saved on SAUVER).
 5. PWA offline (service worker) + home-screen icon.

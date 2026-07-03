@@ -60,6 +60,21 @@ html, body {
 .group-coef { color: #888; font-size: 16px; font-weight: 700; margin-top: 2px; }
 .contract { font-size: 16px; margin: 12px 0 0; }
 .remarks { font-size: 14px; color: #555; margin: 8px 0 0; font-weight: 300; }
+.note-box {
+    display: block; width: 100%; margin-top: 12px; padding: 12px;
+    min-height: 76px; resize: vertical; box-sizing: border-box;
+    border: 1px solid #d0d0d0; border-radius: 6px; background: #fafafa;
+    font: inherit; font-size: 15px; color: #333;
+}
+.note-box:focus { outline: none; border-color: var(--blue); background: #fff; }
+
+/* Notes carousel */
+.note-counter { font-size: 14px; font-weight: 400; color: var(--muted); }
+.note-student { margin: 0 0 4px; font-size: 20px; font-weight: 700; }
+.note-crit { font-size: 14px; color: var(--muted); margin-top: 2px; }
+.note-dot { display: block; width: 100%; height: 120px; margin: 12px 0; }
+.nav-notes { padding: 0 8px; }
+.notes-back { width: 100%; margin-bottom: 6px; }
 
 /* Overview per-group table */
 .overview-table { margin-top: 8px; }

@@ -49,6 +49,7 @@
                 <div id="groupCoef" class="group-coef"></div>
                 <p id="contract" class="contract"></p>
                 <p id="remarks" class="remarks"></p>
+                <textarea id="noteBox" class="note-box" placeholder="ajouter une note…"></textarea>
             </div>
 
             <!-- Overview -->
@@ -68,6 +69,7 @@
                 <button class="mark" data-idx="3">¾</button>
                 <button class="mark" data-idx="4">1</button>
             </div>
+            <button id="backToNotes" class="btn-outline notes-back" hidden>‹ NOTES</button>
             <button id="overviewBtn" class="btn-primary">GÉNÉRAL</button>
             <div class="nav" id="critNav">
                 <button id="prevCrit" class="btn-outline">‹ critère</button>
@@ -84,6 +86,7 @@
     <div id="menu" class="menu" hidden>
         <button data-act="filter">Filtre de groupes</button>
         <button data-act="completion">Complétude</button>
+        <button data-act="notes">Notes</button>
         <button data-act="change">Changer de fichier</button>
     </div>
 
@@ -111,6 +114,26 @@
         <div id="subpageTitle" class="overlay-head"></div>
         <div id="subpageContent" class="overlay-scroll"></div>
         <button id="subpageBack" class="btn-primary overlay-back">RETOUR</button>
+    </section>
+
+    <!-- Notes carousel -->
+    <section id="notes" class="overlay" hidden>
+        <div class="overlay-head">Notes <span id="noteCounter" class="note-counter"></span></div>
+        <div class="overlay-scroll">
+            <div id="noteEmpty" class="sub-empty" hidden>aucune note enregistrée</div>
+            <div id="noteBody">
+                <h2 id="noteStudent" class="note-student"></h2>
+                <div id="noteGroup" class="group-name"></div>
+                <div id="noteCrit" class="note-crit"></div>
+                <canvas id="noteDot" class="note-dot"></canvas>
+                <textarea id="noteEdit" class="note-box"></textarea>
+            </div>
+        </div>
+        <div class="nav nav-notes">
+            <button id="prevNote" class="btn-outline">‹ note</button>
+            <button id="nextNote" class="btn-outline">note ›</button>
+        </div>
+        <button id="notesBack" class="btn-primary overlay-back">RETOUR</button>
     </section>
 
     <script src="vendor/exceljs.min.js"></script>

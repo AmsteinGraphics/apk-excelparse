@@ -13,7 +13,7 @@
  * The saved .xlsx still carries Excel's real formulas, so Excel recomputes them on open.
  */
 
-// Build marker: header-row fix (distinct-id scoring).
+// Build marker: step 4 — notes.
 const EVALUATION_SHEET = 'evaluation';
 const CRITERIA_SHEET = 'criteres_reviewed';
 const MARK_VALUES = [0, 0.25, 0.5, 0.75, 1];
@@ -33,6 +33,12 @@ const menuBtn = el('menuBtn'), menuEl = el('menu');
 const filterScreen = el('filter'), completionScreen = el('completion'), subpageScreen = el('subpage');
 const filterList = el('filterList'), completionContent = el('completionContent');
 const subpageTitle = el('subpageTitle'), subpageContent = el('subpageContent');
+const noteBox = el('noteBox'), backToNotesBtn = el('backToNotes');
+const notesScreen = el('notes'), noteCounter = el('noteCounter'), noteEmpty = el('noteEmpty');
+const noteBody = el('noteBody'), noteStudent = el('noteStudent'), noteGroupEl = el('noteGroup');
+const noteCrit = el('noteCrit'), noteDotEl = el('noteDot'), noteEdit = el('noteEdit');
+
+const NOTES_SHEET = 'notes';
 
 let workbook = null, ws = null, model = null;
 let studentIdx = 0;
@@ -41,6 +47,9 @@ let overviewReturnCrit = 0;  // criterion to return to from the overview
 let dirty = false, sourceName = 'workbook.xlsx';
 let dotJump = null;          // when set on a criterion page: (slotIndex) => jump
 let groupHidden = [];        // groupHidden[i] hides model.groups[i] everywhere; per-workbook persisted
+let notesList = [];          // [{si, ci}] pairs that have a note
+let notePos = 0;             // carousel cursor
+let noteReturnPos = -1;      // when a criterion page is reached via a note, the note to return to
 
 // ---- Wiring ----
 fileInput.addEventListener('change', onFilePicked);
@@ -71,6 +80,7 @@ menuEl.addEventListener('click', (e) => {
     const act = b.getAttribute('data-act');
     if (act === 'filter') showFilter();
     else if (act === 'completion') showCompletion();
+    else if (act === 'notes') showNotes();
     else if (act === 'change') changeFile();
 });
 el('filterBack').addEventListener('click', closeFilter);
@@ -78,6 +88,26 @@ el('completionBack').addEventListener('click', () => showScreen('grading'));
 el('subpageBack').addEventListener('click', showCompletion);
 el('selectAll').addEventListener('click', () => setAllGroupsHidden(false));
 el('clearAll').addEventListener('click', () => setAllGroupsHidden(true));
+// Criterion-page note box: edit in place, saved into the workbook.
+noteBox.addEventListener('input', () => {
+    if (pageIdx === 0) return;
+    setNote(model.students[studentIdx], model.criteria[pageIdx - 1], noteBox.value);
+});
+// Notes carousel.
+el('prevNote').addEventListener('click', () => navigateNote(-1));
+el('nextNote').addEventListener('click', () => navigateNote(1));
+el('notesBack').addEventListener('click', () => showScreen('grading'));
+noteEdit.addEventListener('input', () => {
+    if (!notesList.length) return;
+    const { si, ci } = notesList[notePos];
+    setNote(model.students[si], model.criteria[ci], noteEdit.value);
+});
+noteDotEl.addEventListener('click', gotoNoteCriterion);
+backToNotesBtn.addEventListener('click', () => {
+    if (noteReturnPos >= 0) notePos = noteReturnPos;
+    noteReturnPos = -1;
+    showNotes();
+});
 
 // ---- Load ----
 async function onFilePicked(e) {
@@ -265,6 +295,14 @@ function drawDots(canvas, dots, opts) {
         const d = dots[i], cx = slot * (i + 0.5);
         let r = Math.min(baseR * coefScale(d.coef, opts.step || 0.25), maxR);
         if (r < 1) r = 1;
+        // Thin gray reference rings at every possible weight, behind the dot.
+        if (opts.referenceScales) {
+            ctx.lineWidth = 1; ctx.strokeStyle = '#CCCCCC';
+            for (const rs of opts.referenceScales) {
+                const rr = Math.min(baseR * rs, maxR);
+                if (rr >= 1) { ctx.beginPath(); ctx.arc(cx, cy, rr, 0, 2 * Math.PI); ctx.stroke(); }
+            }
+        }
         if (i === opts.highlightIndex) {
             ctx.beginPath(); ctx.arc(cx, cy, r + overshoot, 0, 2 * Math.PI);
             ctx.fillStyle = '#000'; ctx.fill();
@@ -298,11 +336,13 @@ function moveCrit(delta) {
     if (pos < 0) pos = delta >= 0 ? 0 : vis.length - 1;
     else pos = ((pos + delta) % vis.length + vis.length) % vis.length;
     pageIdx = vis[pos] + 1;
+    noteReturnPos = -1;
     render();
 }
 function moveStudent(delta) {
     const n = model.students.length;
     studentIdx = ((studentIdx + delta) % n + n) % n;
+    noteReturnPos = -1;
     render();
 }
 function toggleOverview() {
@@ -316,7 +356,7 @@ function toggleOverview() {
     }
     render();
 }
-function jumpToCriterion(ci) { pageIdx = ci + 1; render(); }
+function jumpToCriterion(ci) { pageIdx = ci + 1; noteReturnPos = -1; render(); }
 function groupOfCriterion(ci) {
     for (const g of model.groups) if (ci >= g.first && ci <= g.last) return g;
     return null;
@@ -335,6 +375,8 @@ function render() {
     marksEl.hidden = overview;
     critNav.hidden = overview;
     overviewBtn.textContent = overview ? 'CRITÈRES' : 'GÉNÉRAL';
+    // "‹ NOTES" appears only on a criterion page reached via a note's dot.
+    backToNotesBtn.hidden = overview || noteReturnPos < 0;
 
     if (overview) {
         renderOverview(s);
@@ -430,6 +472,7 @@ function renderCriterion(s) {
         const idx = parseInt(btn.getAttribute('data-idx'), 10);
         btn.classList.toggle('selected', idx === bucket && idx >= 0);
     }
+    noteBox.value = getNote(s, c);
     dirtyEl.hidden = !dirty;
 }
 
@@ -442,6 +485,7 @@ function showScreen(name) {
     filterScreen.hidden = name !== 'filter';
     completionScreen.hidden = name !== 'completion';
     subpageScreen.hidden = name !== 'subpage';
+    notesScreen.hidden = name !== 'notes';
     menuEl.hidden = true;
 }
 function changeFile() { fileInput.value = ''; fileInput.click(); }
@@ -580,6 +624,78 @@ function showSubpage(kind) {
     showScreen('subpage');
 }
 function openStudentOverview(si) { studentIdx = si; pageIdx = 0; showScreen('grading'); render(); }
+
+// ---- Notes (stored on a "notes" sheet at the same (row, col) as the mark cell) ----
+function getNote(student, criterion) {
+    const s = workbook.getWorksheet(NOTES_SHEET);
+    if (!s) return '';
+    const v = s.getRow(student.row).getCell(criterion.col).value;
+    return v == null ? '' : (typeof v === 'string' ? v : cellText(v));
+}
+function setNote(student, criterion, text) {
+    const t = (text || '').trim();
+    let s = workbook.getWorksheet(NOTES_SHEET);
+    if (!s) { if (!t) return; s = workbook.addWorksheet(NOTES_SHEET); }
+    s.getRow(student.row).getCell(criterion.col).value = t ? t : null;
+    setDirty();
+}
+function buildNotesList() {
+    notesList = [];
+    if (!workbook.getWorksheet(NOTES_SHEET)) return;
+    for (let si = 0; si < model.students.length; si++) {
+        for (let ci = 0; ci < model.criteria.length; ci++) {
+            if (getNote(model.students[si], model.criteria[ci])) notesList.push({ si, ci });
+        }
+    }
+}
+function showNotes() {
+    buildNotesList();
+    if (notePos < 0 || notePos >= notesList.length) notePos = 0;
+    renderNote();
+    showScreen('notes');
+}
+function renderNote() {
+    const has = notesList.length > 0;
+    noteEmpty.hidden = has;
+    noteBody.hidden = !has;
+    el('prevNote').disabled = notesList.length < 2;
+    el('nextNote').disabled = notesList.length < 2;
+    if (!has) { noteCounter.textContent = ''; return; }
+    if (notePos >= notesList.length) notePos = notesList.length - 1;
+    const { si, ci } = notesList[notePos];
+    const s = model.students[si], c = model.criteria[ci];
+    noteCounter.textContent = '· note ' + (notePos + 1) + ' / ' + notesList.length;
+    noteStudent.textContent = s.name;
+    noteGroupEl.textContent = c.group || '';
+    noteCrit.textContent = 'critère ' + c.id + (c.contract ? ' · ' + c.contract : '');
+    noteEdit.value = getNote(s, c);
+    // Enlarged dot (2×) over thin reference rings at every possible weight.
+    const dot = [{ bucket: bucketOf(markValue(s, c)), coef: c.coef, id: c.id }];
+    requestAnimationFrame(() => drawDots(noteDotEl, dot, {
+        height: 120, step: 0.33, sizeMult: 2, showLabels: true, referenceScales: weightReferenceScales(),
+    }));
+}
+function navigateNote(delta) {
+    buildNotesList(); // a note may have been emptied via the editor
+    if (!notesList.length) { renderNote(); return; }
+    const n = notesList.length;
+    notePos = ((notePos + delta) % n + n) % n;
+    renderNote();
+}
+function gotoNoteCriterion() {
+    if (!notesList.length) return;
+    const { si, ci } = notesList[notePos];
+    noteReturnPos = notePos;
+    studentIdx = si;
+    pageIdx = ci + 1;
+    showScreen('grading');
+    render();
+}
+function weightReferenceScales() {
+    const set = new Set();
+    model.criteria.forEach((c) => { if (c.coef != null) set.add(c.coef); });
+    return [...set].sort((a, b) => a - b).map((cf) => coefScale(cf, 0.33));
+}
 
 // ---- Save ----
 /*
