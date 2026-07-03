@@ -2,10 +2,11 @@
 :root {
     --brand: #A70E13;
     --blue: #1976D2;
+    --red: #D32F2F;
+    --gray: #CCCCCC;
     --ink: #222;
     --muted: #666;
     --line: #e2e2e2;
-    --ok: #1976D2;
 }
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -21,8 +22,7 @@ html, body {
 /* ---- Picker ---- */
 .picker-screen {
     min-height: 100vh; display: flex; flex-direction: column;
-    align-items: center; justify-content: center; gap: 18px; padding: 24px;
-    text-align: center;
+    align-items: center; justify-content: center; gap: 18px; padding: 24px; text-align: center;
 }
 .brand { font-size: 26px; font-weight: 700; color: var(--brand); }
 .brand .tag {
@@ -39,9 +39,7 @@ html, body {
 .status.error { color: var(--brand); font-weight: 600; }
 
 /* ---- Grading ---- */
-.grading-screen {
-    height: 100vh; display: flex; flex-direction: column;
-}
+.grading-screen { height: 100vh; display: flex; flex-direction: column; }
 .topbar {
     display: flex; align-items: center; gap: 8px;
     padding: 12px 16px; padding-top: calc(12px + env(safe-area-inset-top));
@@ -51,8 +49,11 @@ html, body {
 .dirty { color: #E65100; font-size: 12px; font-weight: 700; }
 
 .scroll { flex: 1; overflow-y: auto; padding: 16px 20px; }
-.student-name { margin: 0; font-size: 22px; font-weight: 700; }
-.progress { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
+.name-row { display: flex; align-items: baseline; gap: 12px; }
+.student-name { flex: 1; margin: 0; font-size: 22px; font-weight: 700; }
+.average { font-size: 18px; font-weight: 700; color: var(--blue); }
+.dot-row { display: block; width: 100%; height: 26px; margin: 10px 0; }
+.progress { margin: 0; color: var(--muted); font-size: 13px; }
 .rule { height: 1px; background: var(--line); margin: 14px 0; }
 
 .group-name { color: var(--blue); font-size: 16px; font-weight: 700; }
@@ -60,21 +61,32 @@ html, body {
 .contract { font-size: 16px; margin: 12px 0 0; }
 .remarks { font-size: 14px; color: #555; margin: 8px 0 0; font-weight: 300; }
 
+/* Overview per-group table */
+.overview-table { margin-top: 8px; }
+.grp-row { display: flex; align-items: center; gap: 10px; padding: 6px 0; }
+.grp-dots { flex: none; height: 22px; }
+.grp-name { flex: 1; color: var(--blue); font-size: 13px; text-decoration: underline; cursor: pointer; }
+.grp-grade { flex: none; font-size: 13px; font-weight: 700; }
+
+/* ---- Controls ---- */
 .controls { padding: 8px 12px calc(12px + env(safe-area-inset-bottom)); }
 .marks { display: flex; gap: 8px; margin-bottom: 8px; }
 .mark {
     flex: 1; padding: 12px 0; font-size: 18px; font-weight: 600;
-    border: 1px solid var(--blue); border-radius: 8px;
-    background: #fff; color: var(--blue); cursor: pointer;
+    border: 1px solid var(--blue); border-radius: 8px; background: #fff; color: var(--blue); cursor: pointer;
 }
 .mark.selected { background: var(--blue); color: #fff; }
 .mark:active { filter: brightness(0.95); }
 
+.btn-primary {
+    display: block; width: 100%; padding: 12px 0; margin-bottom: 6px;
+    font-size: 15px; font-weight: 700; border: none; border-radius: 8px;
+    background: var(--blue); color: #fff; cursor: pointer;
+}
 .nav { display: flex; gap: 8px; margin-top: 8px; }
 .btn-outline {
     flex: 1; padding: 11px 0; font-size: 13px; font-weight: 600;
-    border: 1px solid var(--blue); border-radius: 8px;
-    background: #fff; color: var(--blue); cursor: pointer;
+    border: 1px solid var(--blue); border-radius: 8px; background: #fff; color: var(--blue); cursor: pointer;
 }
 .btn-outline:active { filter: brightness(0.95); }
 .topbar .btn-outline { flex: none; padding: 7px 14px; font-size: 13px; }

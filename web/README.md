@@ -60,7 +60,8 @@ then re-run the workflow.
 ## Roadmap (port order)
 
 1. ✅ Marking one student's criteria + Save = download the graded `.xlsx`.
-2. Overview + group/general averages (`CK`→`CL` math), dots.
+2. ✅ Overview page — general + per-group averages (`CK`→`CL` math, **computed in JS**
+   since ExcelJS has no formula engine) and canvas dot rows; GÉNÉRAL/CRITÈRES toggle.
 3. Group filter + completion.
 4. Notes (the `notes` sheet).
 5. PWA offline (service worker) + home-screen icon.

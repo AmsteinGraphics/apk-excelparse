@@ -34,15 +34,28 @@
         </div>
 
         <div class="scroll">
-            <h1 id="studentName" class="student-name"></h1>
+            <div class="name-row">
+                <h1 id="studentName" class="student-name"></h1>
+                <span id="average" class="average"></span>
+            </div>
+            <canvas id="dotRow" class="dot-row"></canvas>
             <p id="progress" class="progress"></p>
-
             <div class="rule"></div>
 
-            <div id="groupName" class="group-name"></div>
-            <div id="groupCoef" class="group-coef"></div>
-            <p id="contract" class="contract"></p>
-            <p id="remarks" class="remarks"></p>
+            <!-- Criterion detail -->
+            <div id="critBlock">
+                <div id="groupName" class="group-name"></div>
+                <div id="groupCoef" class="group-coef"></div>
+                <p id="contract" class="contract"></p>
+                <p id="remarks" class="remarks"></p>
+            </div>
+
+            <!-- Overview -->
+            <div id="overviewBlock" hidden>
+                <div class="group-name">vue générale</div>
+                <p class="contract">moyenne générale et progression de l'étudiant</p>
+                <div id="overviewTable" class="overview-table"></div>
+            </div>
         </div>
 
         <div class="controls">
@@ -54,7 +67,8 @@
                 <button class="mark" data-idx="3">¾</button>
                 <button class="mark" data-idx="4">1</button>
             </div>
-            <div class="nav">
+            <button id="overviewBtn" class="btn-primary">GÉNÉRAL</button>
+            <div class="nav" id="critNav">
                 <button id="prevCrit" class="btn-outline">‹ critère</button>
                 <button id="nextCrit" class="btn-outline">critère ›</button>
             </div>
