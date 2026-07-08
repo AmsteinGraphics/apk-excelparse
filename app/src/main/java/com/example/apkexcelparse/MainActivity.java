@@ -15,6 +15,9 @@ import android.os.Looper;
 import android.provider.MediaStore;
 import android.provider.OpenableColumns;
 import android.provider.Settings;
+import android.text.SpannableStringBuilder;
+import android.text.Spanned;
+import android.text.style.ForegroundColorSpan;
 import android.view.Gravity;
 import android.view.Menu;
 import android.view.MenuItem;
@@ -119,6 +122,9 @@ public class MainActivity extends AppCompatActivity {
     private LinearLayout subpageContent;
     private TextView subpageTitle;
     private TextView criterionNote;
+    // Red flag (overview page only): tick + reason box shown under the student name.
+    private CheckBox redFlagCheck;
+    private TextView redFlagReason;
     private MaterialButton backToNotesButton;
     private View notesContainer;
     private TextView noteCounter;
@@ -214,6 +220,8 @@ public class MainActivity extends AppCompatActivity {
         subpageContent = findViewById(R.id.subpageContent);
         subpageTitle = findViewById(R.id.subpageTitle);
         criterionNote = findViewById(R.id.criterionNote);
+        redFlagCheck = findViewById(R.id.redFlagCheck);
+        redFlagReason = findViewById(R.id.redFlagReason);
         backToNotesButton = findViewById(R.id.backToNotesButton);
         notesContainer = findViewById(R.id.notesContainer);
         noteCounter = findViewById(R.id.noteCounter);
@@ -230,6 +238,10 @@ public class MainActivity extends AppCompatActivity {
         findViewById(R.id.selectAllGroupsButton).setOnClickListener(v -> setAllGroupsHidden(false));
         findViewById(R.id.clearAllGroupsButton).setOnClickListener(v -> setAllGroupsHidden(true));
         criterionNote.setOnClickListener(v -> editCurrentCriterionNote());
+        // setOnClickListener fires only on user taps (post-toggle state), so programmatic
+        // setChecked() during render never re-triggers a write.
+        redFlagCheck.setOnClickListener(v -> onRedFlagToggled(redFlagCheck.isChecked()));
+        redFlagReason.setOnClickListener(v -> editRedFlagReason());
         backToNotesButton.setOnClickListener(v -> returnToNotes());
         findViewById(R.id.prevNoteButton).setOnClickListener(v -> navigateNote(-1));
         findViewById(R.id.nextNoteButton).setOnClickListener(v -> navigateNote(1));
@@ -560,7 +572,7 @@ public class MainActivity extends AppCompatActivity {
 
         studentCounter.setText(String.format(Locale.getDefault(),
                 "étudiant %d / %d", studentIdx + 1, model.students.size()));
-        studentName.setText(s.name);
+        studentName.setText(nameWithFlag(studentIdx));
 
         if (isOverviewPage()) {
             renderOverview(s);
@@ -586,6 +598,14 @@ public class MainActivity extends AppCompatActivity {
         criterionRemarks.setVisibility(View.GONE);
         criterionNote.setVisibility(View.GONE);
         markButtonsContainer.setVisibility(View.GONE);
+
+        // Red flag tick + (when on) reason box, under the student name — GENERAL page only.
+        boolean flagged = XlsxParser.readRedFlag(workbook, s);
+        redFlagCheck.setVisibility(View.VISIBLE);
+        redFlagCheck.setChecked(flagged);
+        redFlagReason.setText(XlsxParser.readRedFlagReason(workbook, s));
+        redFlagReason.setVisibility(flagged ? View.VISIBLE : View.GONE);
+
         buildOverviewTable(s);
         overviewTable.setVisibility(View.VISIBLE);
     }
@@ -714,6 +734,8 @@ public class MainActivity extends AppCompatActivity {
         criterionContract.setVisibility(View.VISIBLE);
         criterionRemarks.setVisibility(View.VISIBLE);
         markButtonsContainer.setVisibility(View.VISIBLE);
+        redFlagCheck.setVisibility(View.GONE);
+        redFlagReason.setVisibility(View.GONE);
 
         criterionGroup.setText(c.groupName != null ? c.groupName : "");
         criterionContract.setText(c.contract != null ? c.contract : "");
@@ -1286,7 +1308,7 @@ public class MainActivity extends AppCompatActivity {
         subpageContent.removeAllViews();
         if (cc.markedStudents.isEmpty()) subpageContent.addView(emptyNote("(aucun)"));
         for (int si : cc.markedStudents) {
-            subpageContent.addView(studentLinkRow(model.students.get(si).name, si, SUBPAGE_MARKED));
+            subpageContent.addView(studentLinkRow(si, null, SUBPAGE_MARKED));
         }
         setScreen(subpageContainer);
     }
@@ -1299,9 +1321,9 @@ public class MainActivity extends AppCompatActivity {
         if (cc.partialStudents.isEmpty()) subpageContent.addView(emptyNote("(aucun)"));
         for (int k = 0; k < cc.partialStudents.size(); k++) {
             int si = cc.partialStudents.get(k);
-            String label = model.students.get(si).name + "   —   "
+            String suffix = "   —   "
                     + String.format(Locale.getDefault(), "%.1f", cc.partialPercents.get(k)) + "%";
-            subpageContent.addView(studentLinkRow(label, si, SUBPAGE_PARTIAL));
+            subpageContent.addView(studentLinkRow(si, suffix, SUBPAGE_PARTIAL));
         }
         setScreen(subpageContainer);
     }
@@ -1313,7 +1335,7 @@ public class MainActivity extends AppCompatActivity {
         subpageContent.removeAllViews();
         if (cc.unmarkedStudents.isEmpty()) subpageContent.addView(emptyNote("(aucun)"));
         for (int si : cc.unmarkedStudents) {
-            subpageContent.addView(studentLinkRow(model.students.get(si).name, si, SUBPAGE_UNMARKED));
+            subpageContent.addView(studentLinkRow(si, null, SUBPAGE_UNMARKED));
         }
         setScreen(subpageContainer);
     }
@@ -1329,7 +1351,7 @@ public class MainActivity extends AppCompatActivity {
         subpageContent.removeAllViews();
         if (model.students.isEmpty()) subpageContent.addView(emptyNote("(aucun)"));
         for (int si = 0; si < model.students.size(); si++) {
-            subpageContent.addView(studentLinkRow(model.students.get(si).name, si, SUBPAGE_LISTE));
+            subpageContent.addView(studentLinkRow(si, null, SUBPAGE_LISTE));
         }
         setScreen(subpageContainer);
     }
@@ -1397,9 +1419,10 @@ public class MainActivity extends AppCompatActivity {
         return row;
     }
 
-    private TextView studentLinkRow(String text, int studentIndex, int subpageKind) {
+    private TextView studentLinkRow(int studentIndex, String suffix, int subpageKind) {
         TextView tv = new TextView(this);
-        tv.setText(text);
+        CharSequence base = nameWithFlag(studentIndex); // trailing red dot when flagged
+        tv.setText(suffix == null ? base : new SpannableStringBuilder(base).append(suffix));
         tv.setTextSize(16f);
         tv.setTextColor(0xFF1976D2);
         tv.setPaintFlags(tv.getPaintFlags() | android.graphics.Paint.UNDERLINE_TEXT_FLAG);
@@ -1418,6 +1441,72 @@ public class MainActivity extends AppCompatActivity {
         int pad = Math.round(dpToPx(10f));
         tv.setPadding(0, pad, 0, pad);
         return tv;
+    }
+
+    // ---- Red flag -----------------------------------------------------------------------------
+    // A student's red flag lives on the notes sheet at the student-name column (see XlsxParser).
+    // It is dirty-tracked and saved on SAUVER like marks and notes.
+
+    private static final int RED_FLAG_COLOR = 0xFFD32F2F;
+
+    /** Student name as shown everywhere: a trailing red dot appended when the student is flagged. */
+    private CharSequence nameWithFlag(int studentIndex) {
+        Student s = model.students.get(studentIndex);
+        String name = s.name != null ? s.name : "";
+        if (workbook == null || !XlsxParser.readRedFlag(workbook, s)) return name;
+        SpannableStringBuilder sb = new SpannableStringBuilder(name);
+        sb.append("  ");
+        int start = sb.length();
+        sb.append("●"); // ● red dot
+        sb.setSpan(new ForegroundColorSpan(RED_FLAG_COLOR), start, sb.length(),
+                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        return sb;
+    }
+
+    /** Overview red-flag tick toggled: persist, then re-render (updates the name dot + reason box). */
+    private void onRedFlagToggled(boolean on) {
+        if (model == null || workbook == null || !isOverviewPage()) return;
+        Student s = model.students.get(studentIdx);
+        // Keep any existing reason when toggling on; toggling off blanks the cell.
+        XlsxParser.writeRedFlag(workbook, s, on, XlsxParser.readRedFlagReason(workbook, s));
+        dirty = true;
+        updateDirtyUi();
+        render();
+    }
+
+    /** Edit dialog for a student's red-flag reason. Saving a reason implies the flag is on. */
+    private void editRedFlagReason() {
+        if (model == null || workbook == null || !isOverviewPage()) return;
+        Student s = model.students.get(studentIdx);
+        final EditText input = new EditText(this);
+        input.setInputType(android.text.InputType.TYPE_CLASS_TEXT
+                | android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE
+                | android.text.InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);
+        input.setMinLines(3);
+        input.setGravity(Gravity.TOP);
+        input.setText(XlsxParser.readRedFlagReason(workbook, s));
+        input.setSelection(input.getText().length());
+        int pad = Math.round(dpToPx(16f));
+        android.widget.FrameLayout wrap = new android.widget.FrameLayout(this);
+        wrap.setPadding(pad, pad / 2, pad, 0);
+        wrap.addView(input);
+        androidx.appcompat.app.AlertDialog dialog = new androidx.appcompat.app.AlertDialog.Builder(this)
+                .setTitle(s.name + " · signalement")
+                .setView(wrap)
+                .setPositiveButton(android.R.string.ok, (d, w) -> {
+                    XlsxParser.writeRedFlag(workbook, s, true, input.getText().toString());
+                    dirty = true;
+                    updateDirtyUi();
+                    render();
+                })
+                .setNegativeButton(android.R.string.cancel, null)
+                .create();
+        input.requestFocus();
+        if (dialog.getWindow() != null) {
+            dialog.getWindow().setSoftInputMode(
+                    android.view.WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE);
+        }
+        dialog.show();
     }
 
     // ---- Notes --------------------------------------------------------------------------------
@@ -1525,7 +1614,7 @@ public class MainActivity extends AppCompatActivity {
         Criterion c = model.criteria.get(pair[1]);
         noteCounter.setText(String.format(Locale.getDefault(),
                 "note %d / %d", notePos + 1, notesList.size()));
-        noteStudentName.setText(s.name);
+        noteStudentName.setText(nameWithFlag(pair[0]));
         noteGroupName.setText(c.groupName != null ? c.groupName : "");
         noteCriterionName.setText("critère " + (c.id != null ? c.id : "")
                 + (c.contract != null && !c.contract.isEmpty() ? " · " + c.contract : ""));

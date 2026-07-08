@@ -34,11 +34,16 @@ const filterScreen = el('filter'), completionScreen = el('completion'), subpageS
 const filterList = el('filterList'), completionContent = el('completionContent');
 const subpageTitle = el('subpageTitle'), subpageContent = el('subpageContent');
 const noteBox = el('noteBox'), backToNotesBtn = el('backToNotes');
+const redFlagBlock = el('redFlagBlock'), redFlagCheck = el('redFlagCheck'), redFlagReason = el('redFlagReason');
 const notesScreen = el('notes'), noteCounter = el('noteCounter'), noteEmpty = el('noteEmpty');
 const noteBody = el('noteBody'), noteStudent = el('noteStudent'), noteGroupEl = el('noteGroup');
 const noteCrit = el('noteCrit'), noteDotEl = el('noteDot'), noteEdit = el('noteEdit');
 
 const NOTES_SHEET = 'notes';
+// Red flag: stored on the notes sheet at the student-name column (col B = ExcelJS colNumber 2),
+// marker-prefixed so an on-but-empty flag differs from no flag and reads as a flag in Excel.
+const FLAG_MARK = '⚑';
+const FLAG_COL = 2;
 
 let workbook = null, ws = null, model = null;
 let studentIdx = 0;
@@ -97,6 +102,17 @@ el('clearAll').addEventListener('click', () => setAllGroupsHidden(true));
 noteBox.addEventListener('input', () => {
     if (pageIdx === 0) return;
     setNote(model.students[studentIdx], model.criteria[pageIdx - 1], noteBox.value);
+});
+// Red flag (GENERAL page). Toggling re-renders (updates the name dot + reason box); editing the
+// reason writes on each keystroke without re-render, so the textarea keeps focus (like the note box).
+redFlagCheck.addEventListener('change', () => {
+    const s = model.students[studentIdx];
+    setFlag(s, redFlagCheck.checked, flagReason(s));
+    render();
+});
+redFlagReason.addEventListener('input', () => {
+    if (pageIdx !== 0) return;
+    setFlag(model.students[studentIdx], true, redFlagReason.value);
 });
 // Notes carousel.
 el('prevNote').addEventListener('click', () => navigateNote(-1));
@@ -380,8 +396,17 @@ function render() {
     const s = model.students[studentIdx];
     const overview = pageIdx === 0;
     studentCounter.textContent = 'étudiant ' + (studentIdx + 1) + ' / ' + model.students.length;
-    studentName.textContent = s.name;
+    setStudentLabel(studentName, studentIdx, null);
     progressEl.textContent = markedCount(s) + ' / ' + model.criteria.length + ' critères notés';
+
+    // Red flag tick + reason box, under the name — GENERAL page only.
+    redFlagBlock.hidden = !overview;
+    if (overview) {
+        const flagged = isFlagged(s);
+        redFlagCheck.checked = flagged;
+        redFlagReason.hidden = !flagged;
+        if (document.activeElement !== redFlagReason) redFlagReason.value = flagReason(s);
+    }
 
     critBlock.hidden = overview;
     overviewBlock.hidden = !overview;
@@ -631,7 +656,7 @@ function showSubpage(kind) {
     list.forEach((si, k) => {
         const a = document.createElement('div');
         a.className = 'sub-item';
-        a.textContent = model.students[si].name + (pct ? ('   —   ' + pct[k].toFixed(1) + '%') : '');
+        setStudentLabel(a, si, pct ? ('   —   ' + pct[k].toFixed(1) + '%') : null);
         a.addEventListener('click', () => openStudentOverview(si, kind));
         subpageContent.appendChild(a);
     });
@@ -650,7 +675,7 @@ function showListe() {
     model.students.forEach((s, si) => {
         const a = document.createElement('div');
         a.className = 'sub-item';
-        a.textContent = s.name;
+        setStudentLabel(a, si, null);
         a.addEventListener('click', () => openStudentOverview(si, 'liste'));
         subpageContent.appendChild(a);
     });
@@ -679,6 +704,49 @@ function setNote(student, criterion, text) {
     s.getRow(student.row).getCell(criterion.col).value = t ? t : null;
     setDirty();
 }
+// ---- Red flag (stored on the "notes" sheet at the student-name column) ----
+function readFlagRaw(student) {
+    const s = workbook.getWorksheet(NOTES_SHEET);
+    if (!s) return '';
+    const v = s.getRow(student.row).getCell(FLAG_COL).value;
+    return v == null ? '' : (typeof v === 'string' ? v : cellText(v));
+}
+// Flagged = the ⚑ marker is present; a cell holding only kept reason text reads as unflagged.
+function isFlagged(student) { return readFlagRaw(student).startsWith(FLAG_MARK); }
+function flagReason(student) {
+    const raw = readFlagRaw(student);
+    if (!raw) return '';
+    return raw.startsWith(FLAG_MARK) ? raw.slice(FLAG_MARK.length).trim() : raw.trim();
+}
+// When off, keep the reason text but drop the marker (blank the cell only if there's no reason).
+function setFlag(student, on, reason) {
+    const r = (reason || '').trim();
+    const val = on ? (r ? (FLAG_MARK + ' ' + r) : FLAG_MARK) : (r || null);
+    let s = workbook.getWorksheet(NOTES_SHEET);
+    if (val == null) {
+        if (s) s.getRow(student.row).getCell(FLAG_COL).value = null;
+        setDirty();
+        return;
+    }
+    if (!s) s = workbook.addWorksheet(NOTES_SHEET);
+    s.getRow(student.row).getCell(FLAG_COL).value = val;
+    setDirty();
+}
+// Set an element's content to a student's name, with a trailing red dot when flagged, plus an
+// optional plain suffix (e.g. the partial "— 42.0%").
+function setStudentLabel(node, si, suffix) {
+    const s = model.students[si];
+    node.textContent = '';
+    node.appendChild(document.createTextNode(s.name));
+    if (isFlagged(s)) {
+        const dot = document.createElement('span');
+        dot.className = 'flag-dot';
+        dot.textContent = ' ●';
+        node.appendChild(dot);
+    }
+    if (suffix) node.appendChild(document.createTextNode(suffix));
+}
+
 function buildNotesList() {
     notesList = [];
     if (!workbook.getWorksheet(NOTES_SHEET)) return;
@@ -705,7 +773,7 @@ function renderNote() {
     const { si, ci } = notesList[notePos];
     const s = model.students[si], c = model.criteria[ci];
     noteCounter.textContent = '· note ' + (notePos + 1) + ' / ' + notesList.length;
-    noteStudent.textContent = s.name;
+    setStudentLabel(noteStudent, si, null);
     noteGroupEl.textContent = c.group || '';
     noteCrit.textContent = 'critère ' + c.id + (c.contract ? ' · ' + c.contract : '');
     noteEdit.value = getNote(s, c);

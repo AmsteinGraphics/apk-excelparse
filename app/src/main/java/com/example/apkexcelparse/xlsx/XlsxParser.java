@@ -32,6 +32,11 @@ public class XlsxParser {
     // App-managed sheet holding per-(student, criterion) note text at the SAME (row, column) as the
     // mark cell on the evaluation sheet. Created on demand when the first note is written.
     private static final String NOTES_SHEET = "notes";
+    // A student's red flag lives on the notes sheet at the student-name column (COL_STUDENT_NAME),
+    // same row as the student. Marker-prefixed so an on-but-empty flag is distinguishable from no
+    // flag, and so it reads as a flag when opened in Excel. Never collides with note cells (criteria
+    // live in far-right columns, never in column B).
+    private static final String RED_FLAG_MARK = "⚑"; // ⚑
 
     // Excel fill colors that tag meaningful cells in the workbook.
     // Note: criterion labels display as pale blue in Excel but come from a themed fill
@@ -245,6 +250,59 @@ public class XlsxParser {
         }
         if (cell == null) cell = row.createCell(criterion.columnIndex);
         cell.setCellValue(text.trim());
+    }
+
+    /** Raw string stored in the red-flag cell (notes sheet, student-name column), or "" if none. */
+    private static String readRedFlagRaw(XSSFWorkbook workbook, Student student) {
+        Sheet notes = workbook.getSheet(NOTES_SHEET);
+        if (notes == null) return "";
+        Row row = notes.getRow(student.rowIndex);
+        if (row == null) return "";
+        Cell cell = row.getCell(COL_STUDENT_NAME);
+        if (cell == null) return "";
+        if (cell.getCellType() == CellType.STRING) return cell.getStringCellValue();
+        return "";
+    }
+
+    /** Whether the student is red-flagged (the ⚑ marker is present; kept-but-unflagged text is not). */
+    public static boolean readRedFlag(XSSFWorkbook workbook, Student student) {
+        return readRedFlagRaw(workbook, student).startsWith(RED_FLAG_MARK);
+    }
+
+    /** The red-flag reason (marker stripped), or "" when flagged without a reason / not flagged. */
+    public static String readRedFlagReason(XSSFWorkbook workbook, Student student) {
+        String raw = readRedFlagRaw(workbook, student);
+        if (raw.isEmpty()) return "";
+        if (raw.startsWith(RED_FLAG_MARK)) return raw.substring(RED_FLAG_MARK.length()).trim();
+        return raw.trim();
+    }
+
+    /**
+     * Set a student's red flag on the notes sheet at the student-name column. When on, the cell
+     * holds the marker plus any reason ("⚑ reason"); when off, the reason text is kept but the
+     * marker is dropped (so the row reads as unflagged while the note survives — re-ticking restores
+     * it). The cell is blanked only when off with no reason. Creates the notes sheet on first use.
+     */
+    public static void writeRedFlag(XSSFWorkbook workbook, Student student, boolean on, String reason) {
+        String r = reason == null ? "" : reason.trim();
+        String value = on ? (r.isEmpty() ? RED_FLAG_MARK : RED_FLAG_MARK + " " + r) : r;
+        Sheet notes = workbook.getSheet(NOTES_SHEET);
+        if (notes == null) {
+            if (value.isEmpty()) return;
+            notes = workbook.createSheet(NOTES_SHEET);
+        }
+        Row row = notes.getRow(student.rowIndex);
+        if (row == null) {
+            if (value.isEmpty()) return;
+            row = notes.createRow(student.rowIndex);
+        }
+        Cell cell = row.getCell(COL_STUDENT_NAME);
+        if (value.isEmpty()) {
+            if (cell != null) cell.setBlank();
+            return;
+        }
+        if (cell == null) cell = row.createCell(COL_STUDENT_NAME);
+        cell.setCellValue(value);
     }
 
     /**

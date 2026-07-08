@@ -45,6 +45,18 @@
                 <h1 id="studentName" class="student-name"></h1>
                 <span id="average" class="average"></span>
             </div>
+
+            <!-- Red flag (GENERAL page only): tick to flag the student; when on, a reason field
+                 appears right below. Hidden on criterion pages. -->
+            <div id="redFlagBlock" class="redflag" hidden>
+                <label class="redflag-toggle">
+                    <input id="redFlagCheck" type="checkbox" />
+                    <span>🚩 signalement</span>
+                </label>
+                <textarea id="redFlagReason" class="note-box redflag-reason"
+                          placeholder="raison du signalement…" hidden></textarea>
+            </div>
+
             <canvas id="dotRow" class="dot-row"></canvas>
             <p id="progress" class="progress"></p>
             <div class="rule"></div>

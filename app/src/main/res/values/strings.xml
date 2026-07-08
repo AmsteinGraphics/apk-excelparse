@@ -29,4 +29,6 @@
     <string name="back_to_notes">‹ NOTES</string>
     <string name="note_hint">ajouter une note…</string>
     <string name="no_notes">aucune note enregistrée</string>
+    <string name="red_flag_label">🚩 signalement</string>
+    <string name="red_flag_hint">raison du signalement…</string>
 </resources>

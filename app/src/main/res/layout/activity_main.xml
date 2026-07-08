@@ -131,6 +131,35 @@
                         android:textColor="#1976D2" />
                 </LinearLayout>
 
+                <!-- Red flag (overview/GENERAL page only): tick to flag the student; when on, a
+                     reason field appears right below. Hidden on criterion pages. -->
+                <CheckBox
+                    android:id="@+id/redFlagCheck"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="@string/red_flag_label"
+                    android:textSize="15sp"
+                    android:textStyle="bold"
+                    android:textColor="#D32F2F"
+                    android:buttonTint="#D32F2F"
+                    android:visibility="gone" />
+
+                <TextView
+                    android:id="@+id/redFlagReason"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:minLines="2"
+                    android:gravity="top"
+                    android:padding="12dp"
+                    android:background="@drawable/note_box_bg"
+                    android:textSize="14sp"
+                    android:textColor="#333"
+                    android:textColorHint="#999"
+                    android:hint="@string/red_flag_hint"
+                    android:visibility="gone" />
+
                 <com.example.apkexcelparse.ui.DotProgressView
                     android:id="@+id/dotProgressView"
                     android:layout_width="match_parent"

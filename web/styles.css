@@ -81,6 +81,17 @@ html, body {
 }
 .note-box:focus { outline: none; border-color: var(--blue); background: #fff; }
 
+/* Red flag (GENERAL page) */
+.redflag { margin: 8px 0 0; }
+.redflag-toggle {
+    display: inline-flex; align-items: center; gap: 8px;
+    font-size: 15px; font-weight: 700; color: var(--red); cursor: pointer;
+}
+.redflag-toggle input { width: 18px; height: 18px; accent-color: var(--red); }
+.redflag-reason { margin-top: 6px; }
+/* Trailing red dot after a flagged student's name, everywhere it appears. */
+.flag-dot { color: var(--red); }
+
 /* Notes carousel */
 .note-counter { font-size: 14px; font-weight: 400; color: var(--muted); }
 .note-student { margin: 0 0 4px; font-size: 20px; font-weight: 700; }
