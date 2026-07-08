@@ -32,4 +32,13 @@
     <string name="no_notes">aucune note enregistrée</string>
     <string name="red_flag_label">🚩 signalement</string>
     <string name="red_flag_hint">raison du signalement…</string>
+    <string name="merge_file">Fusion .xlsx…</string>
+    <string name="merge_title">Fusion</string>
+    <string name="merge_current">ACTUEL</string>
+    <string name="merge_imported">IMPORT</string>
+    <string name="merge_keep_current">GARDER ACTUEL</string>
+    <string name="merge_import">IMPORTER</string>
+    <string name="merge_keep_all">GARDER TOUS</string>
+    <string name="merge_import_all">IMPORTER TOUS</string>
+    <string name="merge_confirm">Êtes-vous sûr ?</string>
 </resources>

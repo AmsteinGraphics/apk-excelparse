@@ -129,6 +129,40 @@ public class XlsxParser {
     }
 
     /**
+     * Check that two parsed workbooks share the exact same topology — same students in the same
+     * rows and the same criteria in the same columns — so that a merge can align cells by position.
+     * Returns {@code null} when they match, or a short French description of the first difference.
+     * Merging is refused unless this returns null (files come from the same template).
+     */
+    public static String topologyMismatch(GradingModel current, GradingModel imported) {
+        if (current.criteria.size() != imported.criteria.size()) {
+            return "nombre de critères différent ("
+                    + current.criteria.size() + " ici, " + imported.criteria.size() + " dans l'import)";
+        }
+        if (current.students.size() != imported.students.size()) {
+            return "nombre d'étudiants différent ("
+                    + current.students.size() + " ici, " + imported.students.size() + " dans l'import)";
+        }
+        for (int i = 0; i < current.criteria.size(); i++) {
+            Criterion a = current.criteria.get(i), b = imported.criteria.get(i);
+            if (a.columnIndex != b.columnIndex || !Objects.equals(a.id, b.id)) {
+                return "critère différent en position " + (i + 1)
+                        + " (« " + a.id + " » ici, « " + b.id + " » dans l'import)";
+            }
+        }
+        for (int i = 0; i < current.students.size(); i++) {
+            Student a = current.students.get(i), b = imported.students.get(i);
+            if (a.rowIndex != b.rowIndex
+                    || !Objects.equals(a.number, b.number)
+                    || !Objects.equals(a.name, b.name)) {
+                return "étudiant différent en position " + (i + 1)
+                        + " (« " + a.name + " » ici, « " + b.name + " » dans l'import)";
+            }
+        }
+        return null;
+    }
+
+    /**
      * Collapse the ordered criteria list into groups: each maximal run of consecutive
      * criteria sharing the same group name is one group. The group's grade column is the
      * "sur 6" formula column immediately to the right of the group's last criterion column.
@@ -253,7 +287,7 @@ public class XlsxParser {
     }
 
     /** Raw string stored in the red-flag cell (notes sheet, student-name column), or "" if none. */
-    private static String readRedFlagRaw(XSSFWorkbook workbook, Student student) {
+    public static String readRedFlagRaw(XSSFWorkbook workbook, Student student) {
         Sheet notes = workbook.getSheet(NOTES_SHEET);
         if (notes == null) return "";
         Row row = notes.getRow(student.rowIndex);

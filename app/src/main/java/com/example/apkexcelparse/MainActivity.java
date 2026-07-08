@@ -135,6 +135,15 @@ public class MainActivity extends AppCompatActivity {
     private TextView noteEmpty;
     private DotProgressView noteDot;
 
+    // Merge carousel (burger → "Fusion .xlsx…"): resolve conflicting cells one at a time.
+    private View mergeContainer;
+    private TextView mergeCounter;
+    private TextView mergeStudentName;
+    private TextView mergeGroupName;
+    private TextView mergeCriterionName;
+    private TextView mergeCurrentValue;
+    private TextView mergeImportedValue;
+
     private XSSFWorkbook workbook;
     private FormulaEvaluator formulaEvaluator;
     private GradingModel model;
@@ -170,6 +179,46 @@ public class MainActivity extends AppCompatActivity {
     // position to return to (the criterion page then shows an extra "‹ NOTES" button). -1 = inactive.
     private int noteReturnPos = -1;
 
+    // Merge carousel state: the unresolved conflicts and the cursor into them. Populated by a
+    // "Fusion .xlsx…" import; each conflict carries the imported value ready to write, so the
+    // imported workbook can be closed before the carousel is shown.
+    private List<MergeConflict> mergeConflicts = new ArrayList<>();
+    private int mergePos;
+    // Running total of imported values (auto-applied + chosen in the carousel), for the final summary.
+    private int mergeImportedCount;
+
+    private static final int MERGE_MARK = 0;
+    private static final int MERGE_NOTE = 1;
+    private static final int MERGE_FLAG = 2;
+
+    /** One conflicting cell between the current workbook and an imported one. */
+    private static class MergeConflict {
+        final int kind;              // MERGE_MARK / MERGE_NOTE / MERGE_FLAG
+        final int studentIdx;
+        final int criterionIdx;      // -1 for a per-student flag conflict
+        final String currentText;    // display, left column
+        final String importedText;   // display, right column
+        // Imported value, ready to apply to the current workbook on "IMPORTER":
+        final double markValue;      // MERGE_MARK
+        final String noteValue;      // MERGE_NOTE
+        final boolean flagOn;        // MERGE_FLAG
+        final String flagReason;     // MERGE_FLAG
+
+        MergeConflict(int kind, int studentIdx, int criterionIdx, String currentText,
+                      String importedText, double markValue, String noteValue,
+                      boolean flagOn, String flagReason) {
+            this.kind = kind;
+            this.studentIdx = studentIdx;
+            this.criterionIdx = criterionIdx;
+            this.currentText = currentText;
+            this.importedText = importedText;
+            this.markValue = markValue;
+            this.noteValue = noteValue;
+            this.flagOn = flagOn;
+            this.flagReason = flagReason;
+        }
+    }
+
     // Per-group visibility filter. groupHidden[i] hides model.groups.get(i) everywhere in the app;
     // remembered per workbook (keyed by display name). Never touches the workbook's formulas.
     private boolean[] groupHidden;
@@ -180,6 +229,9 @@ public class MainActivity extends AppCompatActivity {
 
     private final ActivityResultLauncher<String[]> pickFileLauncher =
             registerForActivityResult(new ActivityResultContracts.OpenDocument(), this::onFilePicked);
+
+    private final ActivityResultLauncher<String[]> importFileLauncher =
+            registerForActivityResult(new ActivityResultContracts.OpenDocument(), this::onImportFilePicked);
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -233,6 +285,18 @@ public class MainActivity extends AppCompatActivity {
         noteText = findViewById(R.id.noteText);
         noteEmpty = findViewById(R.id.noteEmpty);
         noteDot = findViewById(R.id.noteDot);
+        mergeContainer = findViewById(R.id.mergeContainer);
+        mergeCounter = findViewById(R.id.mergeCounter);
+        mergeStudentName = findViewById(R.id.mergeStudentName);
+        mergeGroupName = findViewById(R.id.mergeGroupName);
+        mergeCriterionName = findViewById(R.id.mergeCriterionName);
+        mergeCurrentValue = findViewById(R.id.mergeCurrentValue);
+        mergeImportedValue = findViewById(R.id.mergeImportedValue);
+
+        findViewById(R.id.mergeKeepCurrentButton).setOnClickListener(v -> resolveMerge(false));
+        findViewById(R.id.mergeImportButton).setOnClickListener(v -> resolveMerge(true));
+        findViewById(R.id.mergeKeepAllButton).setOnClickListener(v -> confirmResolveAll(false));
+        findViewById(R.id.mergeImportAllButton).setOnClickListener(v -> confirmResolveAll(true));
 
         findViewById(R.id.filterBackButton).setOnClickListener(v -> closeFilterScreen());
         findViewById(R.id.completionBackButton).setOnClickListener(v -> showGrading());
@@ -296,13 +360,15 @@ public class MainActivity extends AppCompatActivity {
         menu.getMenu().add(0, 2, 1, R.string.completion);
         menu.getMenu().add(0, 3, 2, R.string.notes);
         menu.getMenu().add(0, 6, 3, R.string.liste);
-        menu.getMenu().add(0, 4, 4, R.string.change_file);
-        menu.getMenu().add(0, 5, 5, R.string.check_updates);
+        menu.getMenu().add(0, 7, 4, R.string.merge_file);
+        menu.getMenu().add(0, 4, 5, R.string.change_file);
+        menu.getMenu().add(0, 5, 6, R.string.check_updates);
         menu.setOnMenuItemClickListener(item -> {
             if (item.getItemId() == 1) { showFilterScreen(); return true; }
             if (item.getItemId() == 2) { showCompletionScreen(); return true; }
             if (item.getItemId() == 3) { showNotesScreen(); return true; }
             if (item.getItemId() == 6) { showListeSubpage(); return true; }
+            if (item.getItemId() == 7) { launchImportPicker(); return true; }
             if (item.getItemId() == 4) { launchPicker(); return true; }
             if (item.getItemId() == 5) { checkForUpdates(); return true; }
             return false;
@@ -368,6 +434,305 @@ public class MainActivity extends AppCompatActivity {
         } catch (Exception ignored) {
         }
         return null;
+    }
+
+    // ---- Merge (Fusion .xlsx…) ----------------------------------------------------------------
+    // Import mark / note / red-flag values from another copy of the SAME workbook (identical
+    // topology — same students in the same rows, same criteria in the same columns; only different
+    // columns filled in). Blank current cells are filled silently; genuine value-vs-value
+    // disagreements are resolved one at a time in the merge carousel. Never touches formulas or
+    // saves automatically — merged values are dirty-tracked and written on SAUVER like any mark.
+
+    private void launchImportPicker() {
+        if (model == null || workbook == null) {
+            Toast.makeText(this, "Charge d'abord un fichier.", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        importFileLauncher.launch(new String[]{
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                "application/octet-stream"
+        });
+    }
+
+    private void onImportFilePicked(@Nullable Uri uri) {
+        if (uri == null || model == null || workbook == null) return;
+        setLoading(true);
+        executor.execute(() -> {
+            XSSFWorkbook imported = null;
+            try {
+                try (InputStream in = getContentResolver().openInputStream(uri)) {
+                    if (in == null) throw new IllegalStateException("Could not open picked file");
+                    imported = XlsxParser.open(in);
+                }
+                GradingModel importedModel = XlsxParser.parse(imported);
+                String mismatch = XlsxParser.topologyMismatch(model, importedModel);
+                if (mismatch != null) {
+                    closeQuietly(imported);
+                    mainHandler.post(() -> {
+                        setLoading(false);
+                        showErrorDialog("Fusion impossible",
+                                "L'import n'a pas la même structure que le fichier actuel :\n\n"
+                                        + mismatch
+                                        + "\n\nLes deux fichiers doivent provenir du même modèle.");
+                    });
+                    return;
+                }
+                // Extract everything we need into a plain snapshot, then close the imported workbook.
+                // All current-workbook diffing/writing happens on the main thread (POI isn't
+                // thread-safe and the grading UI stays touchable behind the spinner).
+                MergeSnapshot snap = readImportSnapshot(imported, importedModel);
+                closeQuietly(imported);
+                mainHandler.post(() -> {
+                    setLoading(false);
+                    finishMergePlan(buildMergePlan(snap));
+                });
+            } catch (Exception e) {
+                closeQuietly(imported);
+                mainHandler.post(() -> {
+                    setLoading(false);
+                    showErrorDialog("Fusion impossible",
+                            "Lecture du fichier échouée : " + e.getMessage());
+                });
+            }
+        });
+    }
+
+    /** Read all mark/note/flag values from the imported workbook into a plain array snapshot. */
+    private MergeSnapshot readImportSnapshot(XSSFWorkbook imported, GradingModel importedModel) {
+        int ns = importedModel.students.size(), nc = importedModel.criteria.size();
+        MergeSnapshot s = new MergeSnapshot(ns, nc);
+        for (int si = 0; si < ns; si++) {
+            Student st = importedModel.students.get(si);
+            s.flagRaw[si] = XlsxParser.readRedFlagRaw(imported, st).trim();
+            s.flagOn[si] = XlsxParser.readRedFlag(imported, st);
+            s.flagReason[si] = XlsxParser.readRedFlagReason(imported, st);
+            for (int ci = 0; ci < nc; ci++) {
+                Criterion cr = importedModel.criteria.get(ci);
+                s.marks[si][ci] = XlsxParser.readMark(imported, st, cr);
+                s.notes[si][ci] = XlsxParser.readNote(imported, st, cr).trim();
+            }
+        }
+        return s;
+    }
+
+    /**
+     * Diff the imported snapshot against the current workbook (aligned by position — topology is
+     * verified identical). Fills blank current cells from the import (auto-applied) and returns the
+     * count plus the list of genuine conflicts (both sides present and different). Main thread only.
+     */
+    private MergeResult buildMergePlan(MergeSnapshot snap) {
+        int auto = 0;
+        List<MergeConflict> conflicts = new ArrayList<>();
+        int nc = model.criteria.size();
+        for (int si = 0; si < model.students.size(); si++) {
+            Student curS = model.students.get(si);
+
+            // Per-student red flag (compared as the whole raw cell so reason changes register).
+            if (!snap.flagRaw[si].isEmpty()) {
+                String curFlag = XlsxParser.readRedFlagRaw(workbook, curS).trim();
+                if (curFlag.isEmpty()) {
+                    XlsxParser.writeRedFlag(workbook, curS, snap.flagOn[si], snap.flagReason[si]);
+                    auto++;
+                } else if (!curFlag.equals(snap.flagRaw[si])) {
+                    boolean curOn = XlsxParser.readRedFlag(workbook, curS);
+                    String curReason = XlsxParser.readRedFlagReason(workbook, curS);
+                    conflicts.add(new MergeConflict(MERGE_FLAG, si, -1,
+                            flagDesc(curOn, curReason), flagDesc(snap.flagOn[si], snap.flagReason[si]),
+                            0, null, snap.flagOn[si], snap.flagReason[si]));
+                }
+            }
+
+            for (int ci = 0; ci < nc; ci++) {
+                Criterion curC = model.criteria.get(ci);
+
+                // Mark
+                Double impMark = snap.marks[si][ci];
+                if (impMark != null) {
+                    Double curMark = XlsxParser.readMark(workbook, curS, curC);
+                    if (curMark == null) {
+                        if (XlsxParser.writeMark(workbook, curS, curC, impMark)) auto++;
+                    } else if (Math.abs(curMark - impMark) > 1e-6) {
+                        conflicts.add(new MergeConflict(MERGE_MARK, si, ci,
+                                markLabel(curMark), markLabel(impMark),
+                                impMark, null, false, null));
+                    }
+                }
+
+                // Note
+                String impNote = snap.notes[si][ci];
+                if (!impNote.isEmpty()) {
+                    String curNote = XlsxParser.readNote(workbook, curS, curC).trim();
+                    if (curNote.isEmpty()) {
+                        XlsxParser.writeNote(workbook, curS, curC, impNote);
+                        auto++;
+                    } else if (!curNote.equals(impNote)) {
+                        conflicts.add(new MergeConflict(MERGE_NOTE, si, ci,
+                                curNote, impNote, 0, impNote, false, null));
+                    }
+                }
+            }
+        }
+        return new MergeResult(auto, conflicts);
+    }
+
+    private void finishMergePlan(MergeResult result) {
+        mergeImportedCount = result.autoApplied;
+        if (result.autoApplied > 0) {
+            dirty = true;
+            recomputeFormulas();
+            updateDirtyUi();
+        }
+        if (result.conflicts.isEmpty()) {
+            render(); // refresh dots/average for any auto-applied values (still on the grading screen)
+            Toast.makeText(this,
+                    result.autoApplied > 0
+                            ? "Fusion : " + result.autoApplied + " valeur(s) importée(s), aucun conflit."
+                            : "Fusion : rien à importer.",
+                    Toast.LENGTH_LONG).show();
+            return;
+        }
+        mergeConflicts = result.conflicts;
+        mergePos = 0;
+        setScreen(mergeContainer);
+        renderMerge();
+    }
+
+    private void renderMerge() {
+        if (mergePos < 0 || mergePos >= mergeConflicts.size()) { finishMerge(); return; }
+        MergeConflict c = mergeConflicts.get(mergePos);
+        mergeCounter.setText(String.format(Locale.getDefault(),
+                "conflit %d / %d", mergePos + 1, mergeConflicts.size()));
+        mergeStudentName.setText(nameWithFlag(c.studentIdx));
+        if (c.kind == MERGE_FLAG) {
+            mergeGroupName.setVisibility(View.GONE);
+            mergeCriterionName.setText("signalement");
+        } else {
+            Criterion cr = model.criteria.get(c.criterionIdx);
+            Group g = model.groupForCriterion(c.criterionIdx);
+            mergeGroupName.setText(g != null && g.name != null ? g.name : "");
+            mergeGroupName.setVisibility(View.VISIBLE);
+            String kind = c.kind == MERGE_NOTE ? "remarque" : "note";
+            mergeCriterionName.setText("critère " + (cr.id != null ? cr.id : "") + " · " + kind);
+        }
+        mergeCriterionName.setVisibility(View.VISIBLE);
+        mergeCurrentValue.setText(c.currentText);
+        mergeImportedValue.setText(c.importedText);
+    }
+
+    /** "GARDER ACTUEL" / "IMPORTER": resolve the current conflict and advance to the next. */
+    private void resolveMerge(boolean importIt) {
+        if (mergePos < 0 || mergePos >= mergeConflicts.size()) return;
+        if (importIt) applyConflict(mergeConflicts.get(mergePos));
+        mergePos++;
+        if (mergePos >= mergeConflicts.size()) finishMerge();
+        else renderMerge();
+    }
+
+    /** "GARDER TOUS" / "IMPORTER TOUS": confirm, then apply the choice to all remaining conflicts. */
+    private void confirmResolveAll(boolean importIt) {
+        new androidx.appcompat.app.AlertDialog.Builder(this)
+                .setTitle(R.string.merge_confirm)
+                .setMessage(importIt
+                        ? "Importer toutes les valeurs restantes ?"
+                        : "Garder toutes les valeurs actuelles restantes ?")
+                .setPositiveButton("Oui", (d, w) -> {
+                    for (int k = mergePos; k < mergeConflicts.size(); k++) {
+                        if (importIt) applyConflict(mergeConflicts.get(k));
+                    }
+                    mergePos = mergeConflicts.size();
+                    finishMerge();
+                })
+                .setNegativeButton("Non", null)
+                .show();
+    }
+
+    private void applyConflict(MergeConflict c) {
+        Student s = model.students.get(c.studentIdx);
+        if (c.kind == MERGE_MARK) {
+            XlsxParser.writeMark(workbook, s, model.criteria.get(c.criterionIdx), c.markValue);
+        } else if (c.kind == MERGE_NOTE) {
+            XlsxParser.writeNote(workbook, s, model.criteria.get(c.criterionIdx), c.noteValue);
+        } else {
+            XlsxParser.writeRedFlag(workbook, s, c.flagOn, c.flagReason);
+        }
+        dirty = true;
+        mergeImportedCount++;
+    }
+
+    private void finishMerge() {
+        recomputeFormulas();
+        updateDirtyUi();
+        mergeConflicts = new ArrayList<>();
+        mergePos = 0;
+        showGrading();
+        render();
+        Toast.makeText(this,
+                "Fusion terminée : " + mergeImportedCount + " valeur(s) importée(s).",
+                Toast.LENGTH_LONG).show();
+    }
+
+    /** Invalidate cached formula results so averages recompute after a batch of merged writes. */
+    private void recomputeFormulas() {
+        if (formulaEvaluator != null) {
+            try {
+                formulaEvaluator.clearAllCachedResultValues();
+            } catch (Exception ignored) {
+            }
+        }
+    }
+
+    private static void closeQuietly(XSSFWorkbook wb) {
+        if (wb != null) {
+            try {
+                wb.close();
+            } catch (Exception ignored) {
+            }
+        }
+    }
+
+    /** Mark value as the button-label fraction (0 / ¼ / ½ / ¾ / 1), or "—" when absent. */
+    private static String markLabel(Double v) {
+        switch (markToBucket(v)) {
+            case 0: return "0";
+            case 1: return "¼";
+            case 2: return "½";
+            case 3: return "¾";
+            case 4: return "1";
+            default: return "—";
+        }
+    }
+
+    private static String flagDesc(boolean on, String reason) {
+        if (on) return (reason == null || reason.isEmpty()) ? "🚩 signalé" : "🚩 " + reason;
+        return "non signalé";
+    }
+
+    /** Plain snapshot of an imported workbook's mark/note/flag values, indexed by position. */
+    private static class MergeSnapshot {
+        final Double[][] marks;   // [studentIdx][criterionIdx], null = blank
+        final String[][] notes;   // trimmed, "" = none
+        final String[] flagRaw;   // trimmed raw flag cell, "" = none
+        final boolean[] flagOn;
+        final String[] flagReason;
+
+        MergeSnapshot(int students, int criteria) {
+            marks = new Double[students][criteria];
+            notes = new String[students][criteria];
+            flagRaw = new String[students];
+            flagOn = new boolean[students];
+            flagReason = new String[students];
+        }
+    }
+
+    /** Result of {@link #buildMergePlan}: auto-applied count + the conflicts needing resolution. */
+    private static class MergeResult {
+        final int autoApplied;
+        final List<MergeConflict> conflicts;
+
+        MergeResult(int autoApplied, List<MergeConflict> conflicts) {
+            this.autoApplied = autoApplied;
+            this.conflicts = conflicts;
+        }
     }
 
     private void loadWorkbookAsync() {
@@ -1084,6 +1449,7 @@ public class MainActivity extends AppCompatActivity {
         completionContainer.setVisibility(screen == completionContainer ? View.VISIBLE : View.GONE);
         subpageContainer.setVisibility(screen == subpageContainer ? View.VISIBLE : View.GONE);
         notesContainer.setVisibility(screen == notesContainer ? View.VISIBLE : View.GONE);
+        mergeContainer.setVisibility(screen == mergeContainer ? View.VISIBLE : View.GONE);
     }
 
     private void showPicker() {
