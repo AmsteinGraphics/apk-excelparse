@@ -171,3 +171,9 @@ html, body {
 .comp-value { font-size: 16px; font-weight: 700; color: #333; }
 .sub-item { display: block; padding: 10px 0; font-size: 16px; color: var(--blue); text-decoration: underline; cursor: pointer; }
 .sub-empty { padding: 10px 0; color: #888; }
+/* Liste "only flagged" filter tick */
+.liste-filter {
+    display: flex; align-items: center; gap: 10px; padding: 4px 0 12px;
+    font-size: 15px; font-weight: 700; color: var(--red); cursor: pointer;
+}
+.liste-filter input { width: 18px; height: 18px; accent-color: var(--red); }

@@ -59,6 +59,7 @@ let noteReturnPos = -1;      // when a criterion page is reached via a note, the
 // the GÉNÉRAL button reads RETOUR and goes back to that list. null = none. 'liste' = the roster.
 let overviewReturnSubpage = null;
 let subpageIsListe = false;  // routes the shared subpage BACK button (roster → grading, else → completion)
+let listeRedFlagOnly = false; // Liste subpage: show only red-flagged students (top tick box)
 
 // ---- Wiring ----
 fileInput.addEventListener('change', onFilePicked);
@@ -668,17 +669,34 @@ function showListe() {
     subpageIsListe = true;
     subpageTitle.textContent = 'liste des étudiants';
     subpageContent.innerHTML = '';
-    if (!model.students.length) {
-        const e = document.createElement('div'); e.className = 'sub-empty'; e.textContent = '(aucun)';
-        subpageContent.appendChild(e);
-    }
+
+    // Top tick box: keep only red-flagged students. Rebuilds the list on toggle.
+    const label = document.createElement('label');
+    label.className = 'liste-filter';
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = listeRedFlagOnly;
+    cb.addEventListener('change', () => { listeRedFlagOnly = cb.checked; showListe(); });
+    const span = document.createElement('span');
+    span.textContent = '🚩 seulement les signalés';
+    label.appendChild(cb);
+    label.appendChild(span);
+    subpageContent.appendChild(label);
+
+    let shown = 0;
     model.students.forEach((s, si) => {
+        if (listeRedFlagOnly && !isFlagged(s)) return;
         const a = document.createElement('div');
         a.className = 'sub-item';
         setStudentLabel(a, si, null);
         a.addEventListener('click', () => openStudentOverview(si, 'liste'));
         subpageContent.appendChild(a);
+        shown++;
     });
+    if (!shown) {
+        const e = document.createElement('div'); e.className = 'sub-empty'; e.textContent = '(aucun)';
+        subpageContent.appendChild(e);
+    }
     showScreen('subpage');
 }
 

@@ -24,6 +24,7 @@
     <string name="notes">Notes</string>
     <string name="liste">Liste</string>
     <string name="liste_title">liste des étudiants</string>
+    <string name="liste_flag_filter">🚩 seulement les signalés</string>
     <string name="prev_note">‹ note</string>
     <string name="next_note">note ›</string>
     <string name="back_to_notes">‹ NOTES</string>

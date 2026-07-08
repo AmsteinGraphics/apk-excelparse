@@ -155,6 +155,8 @@ public class MainActivity extends AppCompatActivity {
     // The generic subpage list is shared between Complétude (back → completion) and the Liste
     // roster (back → grading). This flag routes the subpage BACK button to the right place.
     private boolean subpageIsListe;
+    // Liste subpage: when true, the roster shows only red-flagged students (top tick box).
+    private boolean listeRedFlagOnly;
     private boolean dirty;
     // True from pressing SAUVER until the write finishes; drives the "• sauvegarde…" indicator.
     private boolean saving;
@@ -1349,10 +1351,27 @@ public class MainActivity extends AppCompatActivity {
         subpageIsListe = true;
         subpageTitle.setText(R.string.liste_title);
         subpageContent.removeAllViews();
-        if (model.students.isEmpty()) subpageContent.addView(emptyNote("(aucun)"));
+
+        // Top tick box: keep only red-flagged students. Rebuilds the list on toggle.
+        CheckBox flagFilter = new CheckBox(this);
+        flagFilter.setText(R.string.liste_flag_filter);
+        flagFilter.setTextSize(15f);
+        flagFilter.setTextColor(RED_FLAG_COLOR);
+        flagFilter.setButtonTintList(ColorStateList.valueOf(RED_FLAG_COLOR));
+        flagFilter.setChecked(listeRedFlagOnly);
+        int pad = Math.round(dpToPx(4f));
+        flagFilter.setPadding(0, pad, 0, pad);
+        flagFilter.setOnClickListener(v -> { listeRedFlagOnly = flagFilter.isChecked(); showListeSubpage(); });
+        subpageContent.addView(flagFilter);
+
+        int shown = 0;
         for (int si = 0; si < model.students.size(); si++) {
+            if (listeRedFlagOnly && !XlsxParser.readRedFlag(workbook, model.students.get(si))) continue;
             subpageContent.addView(studentLinkRow(si, null, SUBPAGE_LISTE));
+            shown++;
         }
+        if (shown == 0) subpageContent.addView(emptyNote("(aucun)"));
+
         setScreen(subpageContainer);
     }
 
